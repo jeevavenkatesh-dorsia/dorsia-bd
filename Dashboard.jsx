@@ -156,6 +156,71 @@ function Avatar({ name, size = 24 }) {
   );
 }
 
+function matchesMulti(selected, value) {
+  return !selected.length || selected.includes(value);
+}
+
+function MultiFilter({ label, options, selected, onChange, style }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const toggle = (opt) => {
+    onChange(selected.includes(opt) ? selected.filter(x => x !== opt) : [...selected, opt]);
+  };
+
+  const summary = selected.length === 0 ? label : selected.length === 1 ? selected[0] : `${selected.length} selected`;
+  const active = selected.length > 0;
+
+  return (
+    <div ref={ref} style={{ position: "relative", ...style }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          fontSize: 13, padding: "8px 12px", borderRadius: 9, border: "1px solid #e5e7eb",
+          background: "#fff", cursor: "pointer", whiteSpace: "nowrap",
+          display: "inline-flex", alignItems: "center", gap: 6,
+          fontWeight: active ? 600 : 400,
+          color: active ? "#7c3aed" : "#475569",
+          borderColor: active ? "#c4b5fd" : "#e5e7eb",
+        }}
+      >
+        {summary}
+        <span style={{ fontSize: 10, opacity: 0.6 }}>{open ? "▴" : "▾"}</span>
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 50,
+          minWidth: "max(100%, 180px)", background: "#fff", border: "1px solid #e5e7eb",
+          borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.08)", padding: "6px 0",
+          maxHeight: 280, overflowY: "auto",
+        }}>
+          {options.map(opt => (
+            <label
+              key={opt}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+                cursor: "pointer", fontSize: 13, color: "#334155",
+                background: selected.includes(opt) ? "#faf5ff" : "transparent",
+              }}
+            >
+              <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} />
+              {opt}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ============ DASHBOARD TAB ============
 function Donut({ data, size = 180 }) {
   const total = data.reduce((s, d) => s + d.value, 0);
@@ -358,13 +423,13 @@ function PipelineCard({ deal, onClick }) {
 }
 
 function PipelineTab({ deals, onOpenDeal, owners, markets }) {
-  const [fStatus, setFStatus] = useState("");
-  const [fMarket, setFMarket] = useState("");
-  const [fOwner, setFOwner] = useState("");
-  const [fTier, setFTier] = useState("");
+  const [fStatus, setFStatus] = useState([]);
+  const [fMarket, setFMarket] = useState([]);
+  const [fOwner, setFOwner] = useState([]);
+  const [fTier, setFTier] = useState([]);
 
   const filtered = useMemo(() => deals.filter(d =>
-    (!fStatus || d.status === fStatus) && (!fMarket || d.market === fMarket) && (!fOwner || d.owner === fOwner) && (!fTier || d.tier === fTier)
+    matchesMulti(fStatus, d.status) && matchesMulti(fMarket, d.market) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, d.tier)
   ), [deals, fStatus, fMarket, fOwner, fTier]);
 
   const cols = useMemo(() => {
@@ -374,16 +439,16 @@ function PipelineTab({ deals, onOpenDeal, owners, markets }) {
   }, [filtered]);
 
   const selStyle = { fontSize: 13, padding: "8px 12px", borderRadius: 9, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", cursor: "pointer" };
-  const active = fStatus || fMarket || fOwner || fTier;
+  const active = fStatus.length || fMarket.length || fOwner.length || fTier.length;
 
   return (
     <div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <select value={fTier} onChange={e => setFTier(e.target.value)} style={selStyle}><option value="">All Tiers</option>{TIERS.map(t => <option key={t}>{t}</option>)}</select>
-        <select value={fStatus} onChange={e => setFStatus(e.target.value)} style={selStyle}><option value="">All Status</option>{STATUSES.map(s => <option key={s}>{s}</option>)}</select>
-        <select value={fMarket} onChange={e => setFMarket(e.target.value)} style={selStyle}><option value="">All Markets</option>{markets.filter(Boolean).map(m => <option key={m}>{m}</option>)}</select>
-        <select value={fOwner} onChange={e => setFOwner(e.target.value)} style={selStyle}><option value="">All Leads</option>{owners.filter(Boolean).map(o => <option key={o}>{o}</option>)}</select>
-        {active && <button onClick={() => { setFStatus(""); setFMarket(""); setFOwner(""); setFTier(""); }} style={{ ...selStyle, color: "#7c3aed", fontWeight: 600 }}>Clear filters</button>}
+        <MultiFilter label="All Tiers" options={TIERS} selected={fTier} onChange={setFTier} />
+        <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} />
+        <MultiFilter label="All Markets" options={markets.filter(Boolean)} selected={fMarket} onChange={setFMarket} />
+        <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} />
+        {active > 0 && <button onClick={() => { setFStatus([]); setFMarket([]); setFOwner([]); setFTier([]); }} style={{ ...selStyle, color: "#7c3aed", fontWeight: 600 }}>Clear filters</button>}
         <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>{filtered.length} of {deals.length} deals</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${STAGES.length}, minmax(260px, 1fr))`, gap: 16, alignItems: "start" }}>
@@ -758,10 +823,10 @@ function EditableCell({ value, options, onChange, render }) {
 
 function DealsTable({ deals, owners, groups, markets, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport }) {
   const [search, setSearch] = useState("");
-  const [fStage, setFStage] = useState("");
-  const [fStatus, setFStatus] = useState("");
-  const [fOwner, setFOwner] = useState("");
-  const [fTier, setFTier] = useState("");
+  const [fStage, setFStage] = useState([]);
+  const [fStatus, setFStatus] = useState([]);
+  const [fOwner, setFOwner] = useState([]);
+  const [fTier, setFTier] = useState([]);
   const [sort, setSort] = useState({ key: "venue", dir: 1 });
   const [draft, setDraft] = useState(null); // null = no draft open
   const [listening, setListening] = useState(false);
@@ -799,7 +864,7 @@ function DealsTable({ deals, owners, groups, markets, onUpdate, onOpenDeal, onEx
   const filtered = useMemo(() => {
     let r = deals.filter(d =>
       (!search || (d.venue + d.group + d.market).toLowerCase().includes(search.toLowerCase())) &&
-      (!fStage || d.stage === fStage) && (!fStatus || d.status === fStatus) && (!fOwner || d.owner === fOwner) && (!fTier || d.tier === fTier));
+      matchesMulti(fStage, d.stage) && matchesMulti(fStatus, d.status) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, d.tier));
     r = [...r].sort((a, b) => {
       const av = a[sort.key] ?? "", bv = b[sort.key] ?? "";
       return (av > bv ? 1 : av < bv ? -1 : 0) * sort.dir;
@@ -814,16 +879,18 @@ function DealsTable({ deals, owners, groups, markets, onUpdate, onOpenDeal, onEx
     </th>
   );
   const selStyle = { fontSize: 13, padding: "8px 12px", borderRadius: 9, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", cursor: "pointer" };
+  const filtersActive = fStage.length || fStatus.length || fOwner.length || fTier.length;
 
   return (
     <div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <input placeholder="Search deals…" value={search} onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, minWidth: 200, fontSize: 13, padding: "9px 14px", borderRadius: 10, border: "1px solid #e5e7eb" }} />
-        <select value={fTier} onChange={e => setFTier(e.target.value)} style={selStyle}><option value="">All Tiers</option>{TIERS.map(t => <option key={t}>{t}</option>)}</select>
-        <select value={fStage} onChange={e => setFStage(e.target.value)} style={selStyle}><option value="">All Stages</option>{STAGES.map(s => <option key={s}>{s}</option>)}</select>
-        <select value={fStatus} onChange={e => setFStatus(e.target.value)} style={selStyle}><option value="">All Status</option>{STATUSES.map(s => <option key={s}>{s}</option>)}</select>
-        <select value={fOwner} onChange={e => setFOwner(e.target.value)} style={selStyle}><option value="">All Leads</option>{owners.map(o => <option key={o}>{o}</option>)}</select>
+        <MultiFilter label="All Tiers" options={TIERS} selected={fTier} onChange={setFTier} />
+        <MultiFilter label="All Stages" options={STAGES} selected={fStage} onChange={setFStage} />
+        <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} />
+        <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} />
+        {filtersActive > 0 && <button onClick={() => { setFStage([]); setFStatus([]); setFOwner([]); setFTier([]); }} style={{ ...selStyle, color: "#7c3aed", fontWeight: 600 }}>Clear filters</button>}
         <button onClick={onManageLists} style={{ ...selStyle, fontWeight: 600 }}>⚙ Manage lists</button>
         <button onClick={onImport} style={{ ...selStyle, fontWeight: 600 }}>⬆ Import CSV</button>
         <button onClick={listening ? stopVoice : startVoice} style={{ ...selStyle, fontWeight: 600, background: listening ? "#fef2f2" : "#fff", color: listening ? "#dc2626" : "#475569", borderColor: listening ? "#fca5a5" : "#e5e7eb" }}>{listening ? "● Listening… tap to stop" : "🎙 Add by voice"}</button>
