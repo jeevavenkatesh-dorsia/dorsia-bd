@@ -17,6 +17,7 @@ import { TIER_ORDER, normalizeTier, dealTier, tierOptions, tierCounts } from "./
 // Pipeline data lives in Supabase. Initial seed: scripts/deals-seed.json + scripts/seed-deals.mjs
 
 // ============ CONSTANTS ============
+const TODAY = new Date(2026, 5, 18); // Jun 18 2026
 const STAGES = ["Lead", "Conversation", "Offer Sent", "Signed", "Onboarded"];
 // Onboarded means the venue has left the pipeline and joined Dorsia. It is excluded from
 // pipeline counts, status rollups, and insights. PIPELINE_STAGES is everything except Onboarded.
@@ -34,6 +35,19 @@ function parseBlockers(value) {
 function formatBlockers(list) {
   return list.filter(Boolean).join(" + ");
 }
+
+function parseIsoDate(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((value || "").trim());
+  if (!m) return null;
+  return new Date(+m[1], +m[2] - 1, +m[3]);
+}
+
+function toIsoDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 function fieldCounts(deals, field) {
   const counts = {};
@@ -707,8 +721,149 @@ function InlineMultiSelect({ value, options, onChange, onClose, placeholder }) {
   );
 }
 
+function DatePickerField({ value, onChange, onClose, display, placeholder, defaultOpen, align = "right", triggerStyle, hidePencil }) {
+  const ref = useRef(null);
+  const [open, setOpen] = useState(!!defaultOpen);
+  const selected = parseIsoDate(value);
+  const [view, setView] = useState(() => {
+    const base = selected || TODAY;
+    return { year: base.getFullYear(), month: base.getMonth() };
+  });
+
+  const close = useCallback(() => {
+    setOpen(false);
+    onClose?.();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClose = (e) => { if (!ref.current?.contains(e.target)) close(); };
+    document.addEventListener("mousedown", handleClose);
+    return () => document.removeEventListener("mousedown", handleClose);
+  }, [open, close]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, close]);
+
+  useEffect(() => {
+    if (open && selected) setView({ year: selected.getFullYear(), month: selected.getMonth() });
+  }, [open, value]);
+
+  const label = display || placeholder || "No contact logged";
+  const empty = !value || !String(value).trim() || display === "No contact logged";
+  const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
+  const firstDow = new Date(view.year, view.month, 1).getDay();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const shiftMonth = (delta) => {
+    setView(v => {
+      const d = new Date(v.year, v.month + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  };
+
+  const pickDay = (day) => {
+    onChange(toIsoDate(new Date(view.year, view.month, day)));
+    close();
+  };
+
+  const popoverStyle = {
+    position: "absolute",
+    top: "calc(100% + 6px)",
+    ...(align === "right" ? { right: 0 } : { left: 0 }),
+    zIndex: 500,
+    width: 280,
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 14,
+    boxShadow: "0 12px 32px rgba(30,27,75,0.12)",
+    padding: "14px 14px 10px",
+  };
+
+  return (
+    <span ref={ref} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: open ? "#faf5ff" : "transparent",
+          border: "none",
+          borderRadius: 8,
+          padding: "2px 6px",
+          cursor: "pointer",
+          fontFamily: "inherit",
+          fontSize: 13,
+          color: empty ? "#94a3b8" : "#0f172a",
+          fontWeight: 600,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          ...triggerStyle,
+        }}
+        title="Click to set last contact date"
+      >
+        {label}
+        {!hidePencil && <span style={{ fontSize: 11, color: "#cbd5e1", fontWeight: 400 }}>📅</span>}
+      </button>
+      {open && (
+        <div style={popoverStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <button type="button" onClick={() => shiftMonth(-1)} style={{ background: "#f8f7fb", border: "1px solid #eef0f4", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#7c3aed", fontSize: 16 }}>‹</button>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#6d28d9" }}>{MONTH_NAMES[view.month]} {view.year}</span>
+            <button type="button" onClick={() => shiftMonth(1)} style={{ background: "#f8f7fb", border: "1px solid #eef0f4", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#7c3aed", fontSize: 16 }}>›</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
+            {WEEKDAY_LABELS.map(w => (
+              <div key={w} style={{ textAlign: "center", fontSize: 11, fontWeight: 600, color: "#94a3b8", padding: "4px 0" }}>{w}</div>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+            {cells.map((day, i) => {
+              if (!day) return <div key={`e-${i}`} />;
+              const isSelected = selected && selected.getFullYear() === view.year && selected.getMonth() === view.month && selected.getDate() === day;
+              const isToday = TODAY.getFullYear() === view.year && TODAY.getMonth() === view.month && TODAY.getDate() === day;
+              return (
+                <button
+                  key={`${view.year}-${view.month}-${day}`}
+                  type="button"
+                  onClick={() => pickDay(day)}
+                  style={{
+                    border: isToday && !isSelected ? "1.5px solid #c4b5fd" : "1px solid transparent",
+                    borderRadius: 8,
+                    background: isSelected ? "#ede9fe" : "#ffffff",
+                    color: isSelected ? "#6d28d9" : "#334155",
+                    fontWeight: isSelected ? 700 : 500,
+                    fontSize: 13,
+                    padding: "7px 0",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "#faf5ff"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = isSelected ? "#ede9fe" : "#ffffff"; }}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: "1px solid #f1f5f9" }}>
+            <button type="button" onClick={() => { onChange(toIsoDate(TODAY)); close(); }} style={{ background: "none", border: "none", color: "#7c3aed", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>Today</button>
+            <button type="button" onClick={() => { onChange(""); close(); }} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>Clear date</button>
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
+
 // Editable variant: click the value to edit. Supports dropdown options, plain text, or a custom display renderer.
-function EditableDetailRow({ label, value, options, onChange, accent, placeholder, render, multiSelect }) {
+function EditableDetailRow({ label, value, options, onChange, accent, placeholder, render, multiSelect, datePicker, displayValue }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
   const textValue = cleanDetailValue(value);
@@ -725,7 +880,19 @@ function EditableDetailRow({ label, value, options, onChange, accent, placeholde
   };
 
   let body;
-  if (editing && options && multiSelect) {
+  if (editing && datePicker) {
+    body = (
+      <DatePickerField
+        value={value}
+        display={displayValue}
+        placeholder={placeholder}
+        onChange={onChange}
+        onClose={() => setEditing(false)}
+        defaultOpen
+        hidePencil
+      />
+    );
+  } else if (editing && options && multiSelect) {
     body = (
       <InlineMultiSelect
         value={value}
@@ -755,7 +922,15 @@ function EditableDetailRow({ label, value, options, onChange, accent, placeholde
         style={{ fontSize: 13.5, padding: "4px 8px", borderRadius: 7, border: "1.5px solid #a78bfa", textAlign: "right", width: 200, color: "#0f172a" }} />
     );
   } else {
-    body = (
+    body = datePicker ? (
+      <DatePickerField
+        value={value}
+        display={displayValue}
+        placeholder={placeholder}
+        onChange={onChange}
+        hidePencil
+      />
+    ) : (
       <span onClick={() => setEditing(true)} title="Click to edit" style={{ cursor: "pointer", borderRadius: 6, padding: "1px 4px", display: "inline-flex", alignItems: "center", gap: 6, minHeight: 20 }}
         onMouseEnter={e => e.currentTarget.style.background = "#faf5ff"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
         {getDisplay()}
@@ -848,7 +1023,10 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
         <span style={{ color: "#e2e8f0" }}>|</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Avatar name={deal.owner} size={20} /><span style={{ fontSize: 13, color: "#475569" }}>{deal.owner}</span></span>
         <span style={{ color: "#e2e8f0" }}>|</span>
-        <span style={{ fontSize: 13, color: "#64748b" }}>Last contact: <strong style={{ color: "#0f172a", fontWeight: 600 }}>{deal.lastContactDisplay}</strong></span>
+        <span style={{ fontSize: 13, color: "#64748b", display: "inline-flex", alignItems: "center", gap: 6 }}>
+          Last contact:
+          <DatePickerField value={deal.lastContact} display={deal.lastContactDisplay} onChange={v => set("lastContact", v)} placeholder="No contact logged" />
+        </span>
         {stale && <span style={{ fontSize: 12, color: staleTone(deal.staleDays), fontWeight: 500 }}>· {stale}</span>}
       </div>
 
@@ -880,7 +1058,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
             <EditableDetailRow label="Primary Contact" value={deal.contact} onChange={v => set("contact", v)} placeholder="Add contact" />
             <EditableDetailRow label="Website" value={deal.website} onChange={v => set("website", v)} placeholder="Add website" />
             <EditableDetailRow label="Expected Close" value={deal.expectedClose} onChange={v => set("expectedClose", v)} placeholder="Set date" />
-            <EditableDetailRow label="Last Contact" value={deal.lastContact} onChange={v => set("lastContact", v)} placeholder="Add date (YYYY-MM-DD)" render={() => deal.lastContactDisplay} />
+            <EditableDetailRow label="Last Contact" value={deal.lastContact} datePicker displayValue={deal.lastContactDisplay} onChange={v => set("lastContact", v)} placeholder="No contact logged" accent={deal.lastContact ? "#0f172a" : null} />
           </SectionCard>
 
           <SectionCard title="Decks" icon="📑">
@@ -1434,7 +1612,6 @@ function ImportModal({ deals, onImport, onClose }) {
 }
 
 // ============ APP SHELL ============
-const TODAY = new Date(2026, 5, 18); // Jun 18 2026
 function recompute(d) {
   const tier = normalizeTier(d.tier) || (d.tier || "").trim();
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((d.lastContact || "").trim());
