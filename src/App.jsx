@@ -21,7 +21,25 @@ const STAGES = ["Lead", "Conversation", "Offer Sent", "Signed", "Onboarded"];
 const PIPELINE_STAGES = ["Lead", "Conversation", "Offer Sent", "Signed"];
 const isOnboarded = d => d.stage === "Onboarded";
 const STATUSES = ["Progressing", "Stuck", "Not a priority"];
-const TIERS = ["A+", "A"];
+const TIER_ORDER = ["A+", "A", "B", "C", "D"];
+function tierOptions(deals) {
+  const known = new Set(TIER_ORDER);
+  const extra = [...new Set((deals || []).map(d => d.tier).filter(t => t && !known.has(t)))].sort();
+  return [...TIER_ORDER, ...extra];
+}
+function normalizeTier(raw) {
+  const t = (raw || "").trim();
+  if (!t) return "";
+  const lc = t.toLowerCase().replace(/\s+/g, " ");
+  if (/a\s*(\+|plus)/.test(lc)) return "A+";
+  if (/tier\s*a\b/.test(lc) || lc === "a") return "A";
+  if (/tier\s*b\b/.test(lc) || lc === "b") return "B";
+  if (/tier\s*c\b/.test(lc) || lc === "c") return "C";
+  if (/tier\s*d\b/.test(lc) || lc === "d") return "D";
+  if (/^a\+$/i.test(t)) return "A+";
+  if (/^[a-d]$/i.test(t)) return t.toUpperCase();
+  return t;
+}
 
 // Maps old/source stage names (from CSV uploads) to the 4 pipeline stages.
 const STAGE_MAP = {
@@ -96,8 +114,11 @@ function parseVoiceDraft(text, { groups, markets, owners }) {
   const lc = " " + raw.toLowerCase() + " ";
   const draft = { tier: "", venue: "", group: "", market: "", stage: "", status: "", owner: "", lastContact: "" };
 
-  // Tier: "A plus" / "A+" / "tier A"
+  // Tier: "A plus" / "A+" / "tier A" / B / C / D
   if (/\ba\s*(plus|\+)\b/i.test(raw)) draft.tier = "A+";
+  else if (/\btier\s*b\b/i.test(raw)) draft.tier = "B";
+  else if (/\btier\s*c\b/i.test(raw)) draft.tier = "C";
+  else if (/\btier\s*d\b/i.test(raw)) draft.tier = "D";
   else if (/\btier\s*a\b/i.test(raw)) draft.tier = "A";
 
   // Stage — prefer an explicit "stage X"; else first stage keyword by word boundary
@@ -146,13 +167,20 @@ function StatusTag({ status, size = "sm" }) {
   );
 }
 function TierBadge({ tier }) {
-  const isPlus = tier === "A+";
+  if (!tier) return null;
+  const styles = {
+    "A+": { bg: "#1e1b4b", fg: "#fff" },
+    "A": { bg: "#ede9fe", fg: "#5b21b6" },
+    "B": { bg: "#dbeafe", fg: "#1d4ed8" },
+    "C": { bg: "#fef3c7", fg: "#b45309" },
+    "D": { bg: "#f1f5f9", fg: "#475569" },
+  };
+  const s = styles[tier] || { bg: "#f1f5f9", fg: "#64748b" };
   return (
     <span style={{
       fontSize: 10, fontWeight: 700, letterSpacing: 0.3,
       padding: "1px 6px", borderRadius: 5,
-      background: isPlus ? "#1e1b4b" : "#ede9fe",
-      color: isPlus ? "#fff" : "#5b21b6",
+      background: s.bg, color: s.fg,
     }}>{tier}</span>
   );
 }
@@ -433,7 +461,7 @@ function PipelineCard({ deal, onClick }) {
   );
 }
 
-function PipelineTab({ deals, onOpenDeal, owners, markets, onFilteredCountChange }) {
+function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, onFilteredCountChange }) {
   const [fStatus, setFStatus] = useState([]);
   const [fMarket, setFMarket] = useState([]);
   const [fOwner, setFOwner] = useState([]);
@@ -459,7 +487,7 @@ function PipelineTab({ deals, onOpenDeal, owners, markets, onFilteredCountChange
   return (
     <div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <MultiFilter label="All Tiers" options={TIERS} selected={fTier} onChange={setFTier} />
+        <MultiFilter label="All Tiers" options={tiers} selected={fTier} onChange={setFTier} />
         <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} />
         <MultiFilter label="All Markets" options={markets.filter(Boolean)} selected={fMarket} onChange={setFMarket} />
         <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} />
@@ -565,7 +593,7 @@ function SectionCard({ title, icon, right, children }) {
   );
 }
 
-function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, groups, markets }) {
+function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, groups, markets, tiers }) {
   const set = (key, val) => onUpdate(deal.id, key, val);
   // Parsed-from-notes activity, plus any manually added notes (stored on the deal so they persist).
   const manualNotes = deal.activityNotes || [];
@@ -647,7 +675,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
           <SectionCard title="Contract & Details" icon="📄" right={<span style={{ fontSize: 11.5, color: "#cbd5e1" }}>Click any value to edit</span>}>
             <EditableDetailRow label="Stage" value={deal.stage} options={STAGES} onChange={v => set("stage", v)}
               render={v => <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: 999, background: STAGE_DOT[v] }} />{v} <span style={{ color: "#94a3b8", fontWeight: 400 }}>({deal.srcStage})</span></span>} />
-            <EditableDetailRow label="Tier" value={deal.tier} options={TIERS} onChange={v => set("tier", v)} render={v => <TierBadge tier={v} />} />
+            <EditableDetailRow label="Tier" value={deal.tier} options={tiers} onChange={v => set("tier", v)} render={v => <TierBadge tier={v} />} />
             <EditableDetailRow label="Market" value={deal.market} options={markets} onChange={v => set("market", v)} />
             <EditableDetailRow label="Restaurant Group" value={deal.group} options={groups} onChange={v => set("group", v)} />
             <EditableDetailRow label="Sales Lead" value={deal.owner} options={owners} onChange={v => set("owner", v)}
@@ -836,7 +864,7 @@ function EditableCell({ value, options, onChange, render }) {
   );
 }
 
-function DealsTable({ deals, owners, groups, markets, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onFilteredCountChange }) {
+function DealsTable({ deals, owners, groups, markets, tiers, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onFilteredCountChange }) {
   const [search, setSearch] = useState("");
   const [fStage, setFStage] = useState([]);
   const [fStatus, setFStatus] = useState([]);
@@ -905,7 +933,7 @@ function DealsTable({ deals, owners, groups, markets, onUpdate, onOpenDeal, onEx
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <input placeholder="Search deals…" value={search} onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, minWidth: 200, fontSize: 13, padding: "9px 14px", borderRadius: 10, border: "1px solid #e5e7eb" }} />
-        <MultiFilter label="All Tiers" options={TIERS} selected={fTier} onChange={setFTier} />
+        <MultiFilter label="All Tiers" options={tiers} selected={fTier} onChange={setFTier} />
         <MultiFilter label="All Stages" options={STAGES} selected={fStage} onChange={setFStage} />
         <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} />
         <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} />
@@ -939,7 +967,7 @@ function DealsTable({ deals, owners, groups, markets, onUpdate, onOpenDeal, onEx
                     <td style={{ padding: "10px 14px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <select value={draft.tier} onChange={e => setDraftField("tier", e.target.value)} style={{ ...inp, width: 64, ...need("tier") }}>
-                          <option value="">Tier</option>{TIERS.map(t => <option key={t}>{t}</option>)}
+                          <option value="">Tier</option>{tiers.map(t => <option key={t}>{t}</option>)}
                         </select>
                         <input autoFocus placeholder="Restaurant name" value={draft.venue} onChange={e => setDraftField("venue", e.target.value)} style={{ ...inp, width: 150, ...need("venue") }} />
                         <select value={draft.group} onChange={e => setDraftField("group", e.target.value)} style={{ ...inp, width: 150, ...need("group") }}>
@@ -1244,13 +1272,14 @@ function ImportModal({ deals, onImport, onClose }) {
 // ============ APP SHELL ============
 const TODAY = new Date(2026, 5, 18); // Jun 18 2026
 function recompute(d) {
+  const tier = normalizeTier(d.tier) || (d.tier || "").trim();
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((d.lastContact || "").trim());
   if (m) {
     const dt = new Date(+m[1], +m[2] - 1, +m[3]);
     const days = Math.round((TODAY - dt) / 86400000);
-    return { ...d, staleDays: days >= 0 ? days : null, lastContactDisplay: dt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }) };
+    return { ...d, tier, staleDays: days >= 0 ? days : null, lastContactDisplay: dt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }) };
   }
-  return { ...d, staleDays: null, lastContactDisplay: d.lastContact && d.lastContact.trim() ? d.lastContact : "No contact logged" };
+  return { ...d, tier, staleDays: null, lastContactDisplay: d.lastContact && d.lastContact.trim() ? d.lastContact : "No contact logged" };
 }
 
 function buildInsights(allDeals) {
@@ -1310,7 +1339,7 @@ function parseCSV(text) {
 const CSV_FIELD_ALIASES = {
   venue: ["venue", "restaurant", "restaurant name", "name", "company"],
   group: ["group", "restaurant group", "restaurantgroup"],
-  tier: ["tier"],
+  tier: ["tier", "restaurant tier", "venue tier", "account tier", "deal tier", "priority tier", "priority"],
   market: ["market", "city"],
   stage: ["stage"],
   status: ["status"],
@@ -1327,15 +1356,20 @@ const CSV_FIELD_ALIASES = {
 };
 function mapCSVRows(rows) {
   if (rows.length < 1) return [];
-  const header = rows[0].map(h => h.trim().toLowerCase());
+  const header = rows[0].map(h => h.trim().toLowerCase().replace(/^\ufeff/, "").replace(/\s+/g, " "));
   const colIndex = {};
   for (const [field, aliases] of Object.entries(CSV_FIELD_ALIASES)) {
     const idx = header.findIndex(h => aliases.includes(h));
     if (idx >= 0) colIndex[field] = idx;
   }
+  if (colIndex.tier === undefined) {
+    const idx = header.findIndex(h => h === "tier" || h.includes("tier"));
+    if (idx >= 0) colIndex.tier = idx;
+  }
   return rows.slice(1).map(r => {
     const o = {};
     for (const [field, idx] of Object.entries(colIndex)) o[field] = (r[idx] || "").trim();
+    if (o.tier) o.tier = normalizeTier(o.tier);
     return o;
   }).filter(o => (o.venue || "").trim());
 }
@@ -1407,6 +1441,7 @@ export default function App() {
 
   const insights = useMemo(() => buildInsights(deals), [deals]);
   const tasks = useMemo(() => buildTasks(deals), [deals]);
+  const tiers = useMemo(() => tierOptions(deals), [deals]);
 
   const persistError = (e) => setDbError(e?.message || "Save failed. Your change may not have been stored.");
 
@@ -1453,7 +1488,7 @@ export default function App() {
     const isUnsuccessful = rawStage.toLowerCase() === "unsuccessful";
     const status = row.status || (isUnsuccessful ? "Stuck" : "Not a priority");
     const base = {
-      venue: (row.venue || "").trim(), group: row.group || "No Group", tier: row.tier || "",
+      venue: (row.venue || "").trim(), group: row.group || "No Group", tier: normalizeTier(row.tier) || "",
       market: row.market || "", stage, srcStage: row.srcStage || rawStage || stage, status,
       owner: row.owner || "", lastContact: (row.lastContact || "").trim(), blockers: row.blockers || "",
       notes: row.notes || "", dealValue: row.dealValue || "", year1ARR: row.year1ARR || "", billing: row.billing || "",
@@ -1632,9 +1667,9 @@ export default function App() {
             )}
 
             {tab === "dashboard" && <DashboardTab deals={deals} insights={insights} tasks={tasks} onOpenDeal={goDeal} priorityMarkets={priorityMarkets} />}
-            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} owners={owners} markets={markets} onFilteredCountChange={reportFilteredCount} />}
-            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} />}
-            {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={() => setTab("pipeline")} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} />}
+            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} owners={owners} markets={markets} tiers={tiers} onFilteredCountChange={reportFilteredCount} />}
+            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} />}
+            {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={() => setTab("pipeline")} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} tiers={tiers} />}
           </>
         )}
       </div>
