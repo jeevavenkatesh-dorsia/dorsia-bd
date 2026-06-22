@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.js";
+import { normalizeTier } from "./tiers.js";
 
 const JSON_FIELDS = new Set(["tasks", "meetings", "contacts", "activityNotes"]);
 
@@ -23,6 +24,7 @@ export function rowToDeal(row) {
     const appKey = DB_TO_APP[dbKey] || dbKey;
     d[appKey] = value ?? (JSON_FIELDS.has(appKey) ? [] : "");
   }
+  d.tier = normalizeTier(d.tier) || (d.tier || "").trim();
   return d;
 }
 
@@ -31,14 +33,18 @@ export function dealToRow(deal) {
   for (const [key, value] of Object.entries(deal)) {
     if (["staleDays", "lastContactDisplay", "ownerInitials"].includes(key)) continue;
     const dbKey = APP_TO_DB[key] || key;
-    row[dbKey] = value ?? (JSON_FIELDS.has(key) ? [] : "");
+    let val = value ?? (JSON_FIELDS.has(key) ? [] : "");
+    if (key === "tier") val = normalizeTier(val) || (val || "").trim();
+    row[dbKey] = val;
   }
   return row;
 }
 
 export function patchToRow(key, val) {
   const dbKey = APP_TO_DB[key] || key;
-  return { [dbKey]: val ?? (JSON_FIELDS.has(key) ? [] : "") };
+  let v = val ?? (JSON_FIELDS.has(key) ? [] : "");
+  if (key === "tier") v = normalizeTier(v) || (v || "").trim();
+  return { [dbKey]: v };
 }
 
 export async function fetchDeals() {

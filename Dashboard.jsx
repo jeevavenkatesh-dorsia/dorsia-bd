@@ -11,6 +11,7 @@ import {
   deleteDealsByIds,
   upsertDeals,
 } from "./src/lib/dealsDb.js";
+import { TIER_ORDER, normalizeTier, dealTier, tierOptions, tierCounts } from "./src/lib/tiers.js";
 
 // Pipeline data lives in Supabase. Initial seed: scripts/deals-seed.json + scripts/seed-deals.mjs
 
@@ -21,25 +22,6 @@ const STAGES = ["Lead", "Conversation", "Offer Sent", "Signed", "Onboarded"];
 const PIPELINE_STAGES = ["Lead", "Conversation", "Offer Sent", "Signed"];
 const isOnboarded = d => d.stage === "Onboarded";
 const STATUSES = ["Progressing", "Stuck", "Not a priority"];
-const TIER_ORDER = ["A+", "A", "B", "C", "D"];
-function tierOptions(deals) {
-  const known = new Set(TIER_ORDER);
-  const extra = [...new Set((deals || []).map(d => d.tier).filter(t => t && !known.has(t)))].sort();
-  return [...TIER_ORDER, ...extra];
-}
-function normalizeTier(raw) {
-  const t = (raw || "").trim();
-  if (!t) return "";
-  const lc = t.toLowerCase().replace(/\s+/g, " ");
-  if (/a\s*(\+|plus)/.test(lc)) return "A+";
-  if (/tier\s*a\b/.test(lc) || lc === "a") return "A";
-  if (/tier\s*b\b/.test(lc) || lc === "b") return "B";
-  if (/tier\s*c\b/.test(lc) || lc === "c") return "C";
-  if (/tier\s*d\b/.test(lc) || lc === "d") return "D";
-  if (/^a\+$/i.test(t)) return "A+";
-  if (/^[a-d]$/i.test(t)) return t.toUpperCase();
-  return t;
-}
 
 // Maps old/source stage names (from CSV uploads) to the 4 pipeline stages.
 const STAGE_MAP = {
@@ -199,7 +181,7 @@ function matchesMulti(selected, value) {
   return !selected.length || selected.includes(value);
 }
 
-function MultiFilter({ label, options, selected, onChange, style }) {
+function MultiFilter({ label, options, selected, onChange, style, counts }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -246,12 +228,13 @@ function MultiFilter({ label, options, selected, onChange, style }) {
               key={opt}
               style={{
                 display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
-                cursor: "pointer", fontSize: 13, color: "#334155",
+                cursor: "pointer", fontSize: 13, color: counts && !counts[opt] ? "#cbd5e1" : "#334155",
                 background: selected.includes(opt) ? "#faf5ff" : "transparent",
               }}
             >
               <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} />
-              {opt}
+              <span style={{ flex: 1 }}>{opt}</span>
+              {counts && <span style={{ fontSize: 11, color: "#94a3b8" }}>{counts[opt] ?? 0}</span>}
             </label>
           ))}
         </div>
@@ -442,7 +425,7 @@ function PipelineCard({ deal, onClick }) {
           <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.venue}</div>
           <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.group}</div>
         </div>
-        <TierBadge tier={deal.tier} />
+        <TierBadge tier={dealTier(deal)} />
       </div>
       <div style={{ marginTop: 10, marginBottom: 10 }}><StatusTag status={isOnboarded(deal) ? "Onboarded" : deal.status} /></div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -461,14 +444,14 @@ function PipelineCard({ deal, onClick }) {
   );
 }
 
-function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, onFilteredCountChange }) {
+function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, tierCountMap, onFilteredCountChange }) {
   const [fStatus, setFStatus] = useState([]);
   const [fMarket, setFMarket] = useState([]);
   const [fOwner, setFOwner] = useState([]);
   const [fTier, setFTier] = useState([]);
 
   const filtered = useMemo(() => deals.filter(d =>
-    matchesMulti(fStatus, d.status) && matchesMulti(fMarket, d.market) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, d.tier)
+    matchesMulti(fStatus, d.status) && matchesMulti(fMarket, d.market) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, dealTier(d))
   ), [deals, fStatus, fMarket, fOwner, fTier]);
 
   useEffect(() => {
@@ -487,7 +470,7 @@ function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, onFilteredCoun
   return (
     <div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <MultiFilter label="All Tiers" options={tiers} selected={fTier} onChange={setFTier} />
+        <MultiFilter label="All Tiers" options={tiers} selected={fTier} onChange={setFTier} counts={tierCountMap} />
         <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} />
         <MultiFilter label="All Markets" options={markets.filter(Boolean)} selected={fMarket} onChange={setFMarket} />
         <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} />
@@ -651,7 +634,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
           <span style={{ width: 8, height: 8, borderRadius: 999, background: STAGE_DOT[deal.stage] }} />{deal.stage}
         </span>
         <span style={{ color: "#e2e8f0" }}>|</span>
-        <TierBadge tier={deal.tier} />
+        <TierBadge tier={dealTier(deal)} />
         <StatusTag status={isOnboarded(deal) ? "Onboarded" : deal.status} />
         <span style={{ color: "#e2e8f0" }}>|</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Avatar name={deal.owner} size={20} /><span style={{ fontSize: 13, color: "#475569" }}>{deal.owner}</span></span>
@@ -675,7 +658,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
           <SectionCard title="Contract & Details" icon="📄" right={<span style={{ fontSize: 11.5, color: "#cbd5e1" }}>Click any value to edit</span>}>
             <EditableDetailRow label="Stage" value={deal.stage} options={STAGES} onChange={v => set("stage", v)}
               render={v => <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: 999, background: STAGE_DOT[v] }} />{v} <span style={{ color: "#94a3b8", fontWeight: 400 }}>({deal.srcStage})</span></span>} />
-            <EditableDetailRow label="Tier" value={deal.tier} options={tiers} onChange={v => set("tier", v)} render={v => <TierBadge tier={v} />} />
+            <EditableDetailRow label="Tier" value={dealTier(deal)} options={tiers} onChange={v => set("tier", v)} render={v => <TierBadge tier={v} />} />
             <EditableDetailRow label="Market" value={deal.market} options={markets} onChange={v => set("market", v)} />
             <EditableDetailRow label="Restaurant Group" value={deal.group} options={groups} onChange={v => set("group", v)} />
             <EditableDetailRow label="Sales Lead" value={deal.owner} options={owners} onChange={v => set("owner", v)}
@@ -864,7 +847,7 @@ function EditableCell({ value, options, onChange, render }) {
   );
 }
 
-function DealsTable({ deals, owners, groups, markets, tiers, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onFilteredCountChange }) {
+function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onFilteredCountChange }) {
   const [search, setSearch] = useState("");
   const [fStage, setFStage] = useState([]);
   const [fStatus, setFStatus] = useState([]);
@@ -907,7 +890,7 @@ function DealsTable({ deals, owners, groups, markets, tiers, onUpdate, onOpenDea
   const filtered = useMemo(() => {
     let r = deals.filter(d =>
       (!search || (d.venue + d.group + d.market).toLowerCase().includes(search.toLowerCase())) &&
-      matchesMulti(fStage, d.stage) && matchesMulti(fStatus, d.status) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, d.tier));
+      matchesMulti(fStage, d.stage) && matchesMulti(fStatus, d.status) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, dealTier(d)));
     r = [...r].sort((a, b) => {
       const av = a[sort.key] ?? "", bv = b[sort.key] ?? "";
       return (av > bv ? 1 : av < bv ? -1 : 0) * sort.dir;
@@ -933,7 +916,7 @@ function DealsTable({ deals, owners, groups, markets, tiers, onUpdate, onOpenDea
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <input placeholder="Search deals…" value={search} onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, minWidth: 200, fontSize: 13, padding: "9px 14px", borderRadius: 10, border: "1px solid #e5e7eb" }} />
-        <MultiFilter label="All Tiers" options={tiers} selected={fTier} onChange={setFTier} />
+        <MultiFilter label="All Tiers" options={tiers} selected={fTier} onChange={setFTier} counts={tierCountMap} />
         <MultiFilter label="All Stages" options={STAGES} selected={fStage} onChange={setFStage} />
         <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} />
         <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} />
@@ -1013,7 +996,7 @@ function DealsTable({ deals, owners, groups, markets, tiers, onUpdate, onOpenDea
                   onMouseEnter={e => e.currentTarget.style.background = "#fcfaff"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   <td style={{ padding: "12px 14px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <TierBadge tier={d.tier} />
+                      <TierBadge tier={dealTier(d)} />
                       <div>
                         <span style={{ fontSize: 13.5, fontWeight: 600, color: "#0f172a", borderBottom: "1px dotted transparent" }}
                           onMouseEnter={e => e.currentTarget.style.borderBottomColor = "#a78bfa"} onMouseLeave={e => e.currentTarget.style.borderBottomColor = "transparent"}>{d.venue}</span>
@@ -1442,6 +1425,7 @@ export default function App() {
   const insights = useMemo(() => buildInsights(deals), [deals]);
   const tasks = useMemo(() => buildTasks(deals), [deals]);
   const tiers = useMemo(() => tierOptions(deals), [deals]);
+  const tierCountMap = useMemo(() => tierCounts(deals), [deals]);
 
   const persistError = (e) => setDbError(e?.message || "Save failed. Your change may not have been stored.");
 
@@ -1667,8 +1651,8 @@ export default function App() {
             )}
 
             {tab === "dashboard" && <DashboardTab deals={deals} insights={insights} tasks={tasks} onOpenDeal={goDeal} priorityMarkets={priorityMarkets} />}
-            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} owners={owners} markets={markets} tiers={tiers} onFilteredCountChange={reportFilteredCount} />}
-            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} />}
+            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} owners={owners} markets={markets} tiers={tiers} tierCountMap={tierCountMap} onFilteredCountChange={reportFilteredCount} />}
+            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} tierCountMap={tierCountMap} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} />}
             {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={() => setTab("pipeline")} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} tiers={tiers} />}
           </>
         )}
