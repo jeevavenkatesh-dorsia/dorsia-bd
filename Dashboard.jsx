@@ -2010,6 +2010,7 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
   const goDeal = d => { setOpenDeal(d); setTab("detail"); window.scrollTo(0, 0); };
+  const goPipeline = () => { setOpenDeal(null); setTab("pipeline"); window.scrollTo(0, 0); };
   const liveDeal = openDeal ? deals.find(d => d.id === openDeal.id) || openDeal : null;
 
   const signOut = async () => {
@@ -2062,7 +2063,7 @@ export default function App() {
 
       <div style={{ maxWidth: 1320, margin: "0 auto", padding: "28px 28px 60px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22, gap: 12, flexWrap: "wrap" }}>
-          <BrandWordmark size={16} />
+          <BrandWordmark size={16} onClick={goPipeline} />
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 12, color: "#64748b" }}>{session.user.email}</span>
             <button onClick={signOut} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 9, padding: "7px 12px", fontSize: 13, cursor: "pointer", color: "#475569" }}>Sign out</button>
