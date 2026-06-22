@@ -12,7 +12,7 @@ insert into public.app_settings (key, value) values
   ('allowed_email_domains', '[]'::jsonb),
   ('restaurant_groups', '[]'::jsonb),
   ('market_list', '[]'::jsonb),
-  ('sales_leads', '[]'::jsonb)
+  ('sales_leads', '["Anouschka Rao","Andrew Goldberg","Ava Dagres","Blakely Byrd","Courtney Adams","Courtney Kringstein","Gaby","Gaby Espejo","Jordan Okun","Josh Mendel","Joshua Stern","Knox Dobbins","Marc L","Marc Lotenburg","Melissa Crane-Baker","Natalia Bojanowicz","Peter Gosik","Radhika Bansil","Sasha Lambrecht","Stefanie Bobinger","Steffi Klein"]'::jsonb)
 on conflict (key) do nothing;
 
 -- Set allowed domains after deploy, e.g.:

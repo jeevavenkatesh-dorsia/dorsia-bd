@@ -202,15 +202,18 @@ function Avatar({ name, size = 24 }) {
   );
 }
 
-function OwnerDisplay({ owner, size = 20, showNames = true, compact = false }) {
+function OwnerDisplay({ owner, size = 20, showNames = true, compact = false, bar = false }) {
   const names = parseMultiValue(owner);
-  const textStyle = compact
+  const textStyle = bar
+    ? { fontSize: 13, fontWeight: 600, color: "#0f172a" }
+    : compact
     ? { fontSize: 13, color: "#64748b" }
     : { color: "#475569" };
-  const avatarSize = compact ? 14 : size;
+  const avatarSize = bar || compact ? 14 : size;
+  const gap = bar ? 6 : compact ? 5 : 7;
   if (!names.length) return <span style={{ ...textStyle, fontStyle: "italic" }}>Unassigned</span>;
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: compact ? 5 : 7, flexWrap: "wrap", justifyContent: "flex-end" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap, flexWrap: "wrap", justifyContent: "flex-end" }}>
       <span style={{ display: "inline-flex", alignItems: "center" }}>
         {names.map((n, i) => (
           <span key={n} style={{ marginLeft: i ? (compact ? -4 : -5) : 0, zIndex: names.length - i, border: "2px solid #fff", borderRadius: 999 }}>
@@ -1076,7 +1079,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
         <TierBadge tier={dealTier(deal)} />
         <StatusTag status={isOnboarded(deal) ? "Onboarded" : deal.status} />
         <span style={{ color: "#e2e8f0" }}>|</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><OwnerDisplay owner={deal.owner} size={20} /></span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><OwnerDisplay owner={deal.owner} bar /></span>
         <span style={{ color: "#e2e8f0" }}>|</span>
         <span style={{ fontSize: 13, color: "#64748b", display: "inline-flex", alignItems: "center", gap: 6 }}>
           Last contact:
