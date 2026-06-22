@@ -42,9 +42,22 @@ export function patchToRow(key, val) {
 }
 
 export async function fetchDeals() {
-  const { data, error } = await supabase.from("deals").select("*").order("id", { ascending: true });
-  if (error) throw error;
-  return (data || []).map(rowToDeal);
+  const pageSize = 1000;
+  const all = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("deals")
+      .select("*")
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const batch = data || [];
+    all.push(...batch.map(rowToDeal));
+    if (batch.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
 }
 
 export async function fetchAppSettings() {
