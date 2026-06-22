@@ -23,6 +23,7 @@ const STAGES = ["Lead", "Conversation", "Offer Sent", "Signed", "Onboarded"];
 const PIPELINE_STAGES = ["Lead", "Conversation", "Offer Sent", "Signed"];
 const isOnboarded = d => d.stage === "Onboarded";
 const STATUSES = ["Progressing", "Stuck", "Not a priority"];
+const BLOCKERS = ["Price", "Control", "Unresponsive", "Brand", "Logistics", "No need", "Fees", "Min Spend"];
 
 // Maps old/source stage names (from CSV uploads) to the 4 pipeline stages.
 const STAGE_MAP = {
@@ -739,7 +740,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
             <EditableDetailRow label="Sales Lead" value={deal.owner} options={owners} onChange={v => set("owner", v)}
               render={v => <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Avatar name={v} size={20} />{v}</span>} />
             <EditableDetailRow label="Status" value={deal.status} options={STATUSES} onChange={v => set("status", v)} render={v => <StatusTag status={v} />} />
-            <EditableDetailRow label="Blockers" value={deal.blockers} onChange={v => set("blockers", v)} accent={deal.blockers ? "#b91c1c" : null} placeholder="None logged" />
+            <EditableDetailRow label="Blockers" value={deal.blockers} options={["", ...BLOCKERS]} onChange={v => set("blockers", v)} accent={deal.blockers ? "#b91c1c" : null} placeholder="None logged" />
             <EditableDetailRow label="Deal Value" value={deal.dealValue} onChange={v => set("dealValue", v)} placeholder="Add value" render={v => v ? `$${v}` : null} />
             <EditableDetailRow label="Year 1 ARR Potential" value={deal.year1ARR} onChange={v => set("year1ARR", v)} placeholder="Add amount" render={v => v ? `$${v}` : null} />
             <EditableDetailRow label="Billing Frequency" value={deal.billing} options={["", "Monthly", "Quarterly", "Annual"]} onChange={v => set("billing", v)} placeholder="Set frequency" />
