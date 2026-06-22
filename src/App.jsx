@@ -433,7 +433,7 @@ function PipelineCard({ deal, onClick }) {
   );
 }
 
-function PipelineTab({ deals, onOpenDeal, owners, markets }) {
+function PipelineTab({ deals, onOpenDeal, owners, markets, onFilteredCountChange }) {
   const [fStatus, setFStatus] = useState([]);
   const [fMarket, setFMarket] = useState([]);
   const [fOwner, setFOwner] = useState([]);
@@ -442,6 +442,10 @@ function PipelineTab({ deals, onOpenDeal, owners, markets }) {
   const filtered = useMemo(() => deals.filter(d =>
     matchesMulti(fStatus, d.status) && matchesMulti(fMarket, d.market) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, d.tier)
   ), [deals, fStatus, fMarket, fOwner, fTier]);
+
+  useEffect(() => {
+    onFilteredCountChange?.(filtered.length);
+  }, [filtered.length, onFilteredCountChange]);
 
   const cols = useMemo(() => {
     const m = Object.fromEntries(STAGES.map(s => [s, []]));
@@ -832,7 +836,7 @@ function EditableCell({ value, options, onChange, render }) {
   );
 }
 
-function DealsTable({ deals, owners, groups, markets, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport }) {
+function DealsTable({ deals, owners, groups, markets, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onFilteredCountChange }) {
   const [search, setSearch] = useState("");
   const [fStage, setFStage] = useState([]);
   const [fStatus, setFStatus] = useState([]);
@@ -882,6 +886,10 @@ function DealsTable({ deals, owners, groups, markets, onUpdate, onOpenDeal, onEx
     });
     return r;
   }, [deals, search, fStage, fStatus, fOwner, fTier, sort]);
+
+  useEffect(() => {
+    onFilteredCountChange?.(filtered.length);
+  }, [filtered.length, onFilteredCountChange]);
 
   const toggleSort = k => setSort(s => ({ key: k, dir: s.key === k ? -s.dir : 1 }));
   const Th = ({ k, children }) => (
@@ -1341,6 +1349,7 @@ export default function App() {
 
   const [deals, setDeals] = useState([]);
   const [tab, setTab] = useState("dashboard");
+  const [headerDealCount, setHeaderDealCount] = useState(null);
   const [openDeal, setOpenDeal] = useState(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -1389,6 +1398,12 @@ export default function App() {
     if (session) loadAll();
     else setDeals([]);
   }, [session, loadAll]);
+
+  useEffect(() => {
+    if (tab === "pipeline" || tab === "deals") setHeaderDealCount(deals.length);
+  }, [tab, deals.length]);
+
+  const reportFilteredCount = useCallback((n) => setHeaderDealCount(n), []);
 
   const insights = useMemo(() => buildInsights(deals), [deals]);
   const tasks = useMemo(() => buildTasks(deals), [deals]);
@@ -1558,10 +1573,11 @@ export default function App() {
     { id: "pipeline", label: "Pipeline" },
     { id: "deals", label: "Deals" },
   ];
+  const visibleDealCount = headerDealCount ?? deals.length;
   const titles = {
     dashboard: ["Dashboard", "Pipeline overview and key metrics"],
-    pipeline: ["Pipeline", `${deals.length} deals across 4 stages`],
-    deals: ["Deals", `${deals.length} deals`],
+    pipeline: ["Pipeline", `${visibleDealCount} deals across 4 stages`],
+    deals: ["Deals", `${visibleDealCount} deals`],
     detail: ["", ""],
   };
 
@@ -1616,8 +1632,8 @@ export default function App() {
             )}
 
             {tab === "dashboard" && <DashboardTab deals={deals} insights={insights} tasks={tasks} onOpenDeal={goDeal} priorityMarkets={priorityMarkets} />}
-            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} owners={owners} markets={markets} />}
-            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} />}
+            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} owners={owners} markets={markets} onFilteredCountChange={reportFilteredCount} />}
+            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} />}
             {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={() => setTab("pipeline")} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} />}
           </>
         )}
