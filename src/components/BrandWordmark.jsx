@@ -1,6 +1,6 @@
 import React from "react";
 
-/** DORSIA EXEC CRM wordmark — three-part color treatment from brand. */
+/** Dorsia BD Pipeline — three-part color wordmark. */
 export default function BrandWordmark({ size = 16 }) {
   const gap = Math.round(size * 0.55);
   return (
@@ -13,9 +13,9 @@ export default function BrandWordmark({ size = 16 }) {
         userSelect: "none",
       }}
     >
-      <span style={{ fontSize: size, fontWeight: 500, letterSpacing: "0.2em", color: "#111827" }}>DORSIA</span>
-      <span style={{ fontSize: size, fontWeight: 500, color: "#949494", marginLeft: gap }}>EXEC</span>
-      <span style={{ fontSize: size, fontWeight: 500, color: "#9580ff", marginLeft: gap }}>CRM</span>
+      <span style={{ fontSize: size, fontWeight: 500, letterSpacing: "0.14em", color: "#111827" }}>Dorsia</span>
+      <span style={{ fontSize: size, fontWeight: 500, color: "#949494", marginLeft: gap }}>BD</span>
+      <span style={{ fontSize: size, fontWeight: 500, color: "#9580ff", marginLeft: gap }}>Pipeline</span>
     </span>
   );
 }
