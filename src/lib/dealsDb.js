@@ -71,6 +71,29 @@ export async function insertDeal(deal) {
   return rowToDeal(data);
 }
 
+export async function insertDeals(dealList) {
+  if (!dealList.length) return;
+  const rows = dealList.map(d => {
+    const { id, ...rest } = d;
+    return dealToRow(rest);
+  });
+  const batchSize = 50;
+  for (let i = 0; i < rows.length; i += batchSize) {
+    const { error } = await supabase.from("deals").insert(rows.slice(i, i + batchSize));
+    if (error) throw error;
+  }
+}
+
+export async function upsertDeals(dealList) {
+  if (!dealList.length) return;
+  const rows = dealList.map(dealToRow);
+  const batchSize = 50;
+  for (let i = 0; i < rows.length; i += batchSize) {
+    const { error } = await supabase.from("deals").upsert(rows.slice(i, i + batchSize), { onConflict: "id" });
+    if (error) throw error;
+  }
+}
+
 export async function updateDealField(id, key, val) {
   const { data, error } = await supabase
     .from("deals")

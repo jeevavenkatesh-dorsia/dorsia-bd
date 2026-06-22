@@ -6,9 +6,10 @@ import {
   fetchAppSettings,
   savePriorityMarkets,
   insertDeal,
+  insertDeals,
   updateDealField,
   deleteDealsByIds,
-  upsertDeal,
+  upsertDeals,
 } from "./lib/dealsDb.js";
 
 // Pipeline data lives in Supabase. Initial seed: scripts/deals-seed.json + scripts/seed-deals.mjs
@@ -1106,6 +1107,7 @@ function ImportModal({ deals, onImport, onClose }) {
   const [parsed, setParsed] = useState([]);     // mapped rows from file
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
 
   const norm = s => (s || "").trim().toLowerCase();
@@ -1125,24 +1127,35 @@ function ImportModal({ deals, onImport, onClose }) {
     } catch (e) { setError("Couldn't read that file. Is it a valid .csv?"); }
   };
 
-  // Classify every row as add or blocked. Blocked = same venue+market as an earlier row in the file,
-  // or as a deal already in the pipeline. Same venue with a different market is allowed.
+  // Classify rows: update existing venue+market, add new ones, block duplicate rows within the file.
   const analysis = useMemo(() => {
     const seenInFile = new Set();
-    const toAdd = [], blocked = [];
+    const toAdd = [], toUpdate = [], blocked = [];
     parsed.forEach((r, idx) => {
       const k = keyOf(r);
-      if (existingByKey[k]) { blocked.push({ row: r, idx, reason: "existing" }); return; }
       if (seenInFile.has(k)) { blocked.push({ row: r, idx, reason: "file" }); return; }
       seenInFile.add(k);
-      toAdd.push(r);
+      const existing = existingByKey[k];
+      if (existing) toUpdate.push({ id: existing.id, row: r });
+      else toAdd.push(r);
     });
-    return { toAdd, blocked };
+    return { toAdd, toUpdate, blocked };
   }, [parsed, existingByKey]);
 
-  const commit = () => {
-    onImport({ toAdd: analysis.toAdd, toUpdate: [], toDeleteIds: [] });
-    onClose();
+  const importCount = analysis.toAdd.length + analysis.toUpdate.length;
+
+  const commit = async () => {
+    if (!importCount || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await onImport({ toAdd: analysis.toAdd, toUpdate: analysis.toUpdate, toDeleteIds: [] });
+      onClose();
+    } catch (e) {
+      setError(e?.message || "Import failed. Check the error banner on the main page.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -1155,7 +1168,7 @@ function ImportModal({ deals, onImport, onClose }) {
 
         {stage === "upload" && (
           <>
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 18px" }}>Upload a CSV with a header row. Recognized columns include Restaurant/Venue (required), Restaurant Group, Tier, Market, Stage, Status, Sales Lead, Last Contact, Blockers, and the contract fields. Old stage names are mapped automatically (Prospect and Dorsia Target become Lead; Active Conversation and Needs Contract become Conversation; Offer Out becomes Offer Sent). A stage of Unsuccessful lands in Conversation with a Stuck status. A venue is treated as a duplicate only when the same name and market already exist; the same name in a different market imports as a separate deal. Duplicate rows are skipped, the rest still import.</p>
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 18px" }}>Upload a CSV with a header row. Recognized columns include Restaurant/Venue (required), Restaurant Group, Tier, Market, Stage, Status, Sales Lead, Last Contact, Blockers, and the contract fields. Old stage names are mapped automatically. Rows matching an existing venue + market update that deal; new venue + market combinations are added. Duplicate rows within the same file are skipped.</p>
             <div onClick={() => fileRef.current && fileRef.current.click()}
               onDragOver={e => { e.preventDefault(); }} onDrop={e => { e.preventDefault(); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }}
               style={{ border: "1.5px dashed #c4b5fd", borderRadius: 14, padding: 40, textAlign: "center", cursor: "pointer", background: "#faf5ff" }}>
@@ -1178,9 +1191,13 @@ function ImportModal({ deals, onImport, onClose }) {
                 <div style={{ fontSize: 24, fontWeight: 700, color: "#047857" }}>{analysis.toAdd.length}</div>
                 <div style={{ fontSize: 12, color: "#059669" }}>new deals to add</div>
               </div>
+              <div style={{ flex: 1, background: "#eff6ff", borderRadius: 12, padding: 14 }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: "#1d4ed8" }}>{analysis.toUpdate.length}</div>
+                <div style={{ fontSize: 12, color: "#2563eb" }}>existing deals to update</div>
+              </div>
               <div style={{ flex: 1, background: "#fef2f2", borderRadius: 12, padding: 14 }}>
                 <div style={{ fontSize: 24, fontWeight: 700, color: "#b91c1c" }}>{analysis.blocked.length}</div>
-                <div style={{ fontSize: 12, color: "#dc2626" }}>duplicates blocked (same venue + market)</div>
+                <div style={{ fontSize: 12, color: "#dc2626" }}>duplicate rows skipped</div>
               </div>
             </div>
 
@@ -1193,7 +1210,7 @@ function ImportModal({ deals, onImport, onClose }) {
                       <span style={{ color: "#ef4444", fontSize: 14 }}>⊘</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13.5, fontWeight: 600, color: "#0f172a" }}>{b.row.venue || "(no name)"} <span style={{ color: "#94a3b8", fontWeight: 500 }}>· {b.row.market || "no market"}</span></div>
-                        <div style={{ fontSize: 11.5, color: "#dc2626" }}>{b.reason === "existing" ? "Already in the pipeline with this market" : "Appears earlier in the file with this market"}</div>
+                        <div style={{ fontSize: 11.5, color: "#dc2626" }}>Appears earlier in the file with the same venue + market</div>
                       </div>
                       <span style={{ fontSize: 11, color: "#cbd5e1", whiteSpace: "nowrap" }}>row {b.idx + 2}</span>
                     </div>
@@ -1203,9 +1220,11 @@ function ImportModal({ deals, onImport, onClose }) {
               </div>
             )}
 
+            {error && <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 10, fontSize: 13, background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}>{error}</div>}
+
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18 }}>
-              <button onClick={() => { setStage("upload"); setParsed([]); }} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 9, padding: "9px 16px", fontSize: 13, fontWeight: 500, color: "#64748b", cursor: "pointer" }}>← Choose different file</button>
-              <button onClick={commit} disabled={analysis.toAdd.length === 0} style={{ background: analysis.toAdd.length ? "#6d28d9" : "#e5e7eb", color: "#fff", border: "none", borderRadius: 9, padding: "9px 18px", fontSize: 13.5, fontWeight: 600, cursor: analysis.toAdd.length ? "pointer" : "default" }}>Import {analysis.toAdd.length} deal{analysis.toAdd.length !== 1 ? "s" : ""}</button>
+              <button onClick={() => { setStage("upload"); setParsed([]); }} disabled={busy} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 9, padding: "9px 16px", fontSize: 13, fontWeight: 500, color: "#64748b", cursor: busy ? "default" : "pointer" }}>← Choose different file</button>
+              <button onClick={commit} disabled={!importCount || busy} style={{ background: importCount && !busy ? "#6d28d9" : "#e5e7eb", color: "#fff", border: "none", borderRadius: 9, padding: "9px 18px", fontSize: 13.5, fontWeight: 600, cursor: importCount && !busy ? "pointer" : "default" }}>{busy ? "Importing…" : `Import ${importCount} deal${importCount !== 1 ? "s" : ""}`}</button>
             </div>
           </>
         )}
@@ -1424,7 +1443,7 @@ export default function App() {
       owner: row.owner || "", lastContact: (row.lastContact || "").trim(), blockers: row.blockers || "",
       notes: row.notes || "", dealValue: row.dealValue || "", year1ARR: row.year1ARR || "", billing: row.billing || "",
       contact: row.contact || "", website: row.website || "", expectedClose: row.expectedClose || "",
-      tasks: [], meetings: [], contacts: [], activityNotes: [],
+      tasks: row.tasks ?? [], meetings: row.meetings ?? [], contacts: row.contacts ?? [], activityNotes: row.activityNotes ?? [],
     };
     return recompute(id ? { ...base, id } : base);
   };
@@ -1432,16 +1451,17 @@ export default function App() {
   const importDeals = async ({ toAdd, toUpdate, toDeleteIds }) => {
     try {
       await deleteDealsByIds(toDeleteIds);
-      for (const u of toUpdate) {
+      const updated = toUpdate.map(u => {
         const existing = deals.find(d => d.id === u.id);
-        const rec = buildDealFromRow({ ...existing, ...u.row }, u.id);
-        await upsertDeal(rec);
-      }
-      for (const r of toAdd) {
+        return buildDealFromRow({ ...existing, ...u.row }, u.id);
+      });
+      await upsertDeals(updated);
+      const added = toAdd.map(r => {
         const rec = buildDealFromRow(r, null);
         delete rec.id;
-        await insertDeal(rec);
-      }
+        return rec;
+      });
+      await insertDeals(added);
       await loadAll();
       const allRows = [...toAdd, ...toUpdate.map(u => u.row)];
       const newGroups = [...new Set(allRows.map(r => r.group).filter(Boolean))].filter(g => !groups.includes(g));
@@ -1454,6 +1474,7 @@ export default function App() {
     } catch (e) {
       persistError(e);
       await loadAll();
+      throw e;
     }
   };
 
