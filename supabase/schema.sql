@@ -9,7 +9,10 @@ create table if not exists public.app_settings (
 
 insert into public.app_settings (key, value) values
   ('priority_markets', '["New York","London","LA","Miami","Chicago","Dubai","SF"]'::jsonb),
-  ('allowed_email_domains', '[]'::jsonb)
+  ('allowed_email_domains', '[]'::jsonb),
+  ('restaurant_groups', '[]'::jsonb),
+  ('market_list', '[]'::jsonb),
+  ('sales_leads', '[]'::jsonb)
 on conflict (key) do nothing;
 
 -- Set allowed domains after deploy, e.g.:

@@ -66,12 +66,23 @@ export async function fetchDeals() {
   return all;
 }
 
+const MANAGED_LIST_KEYS = {
+  group: "restaurant_groups",
+  market: "market_list",
+  owner: "sales_leads",
+};
+
 export async function fetchAppSettings() {
   const { data, error } = await supabase.from("app_settings").select("key, value");
   if (error) throw error;
   const map = Object.fromEntries((data || []).map(r => [r.key, r.value]));
   return {
     priorityMarkets: map.priority_markets || [],
+    managedLists: {
+      group: map.restaurant_groups || [],
+      market: map.market_list || [],
+      owner: map.sales_leads || [],
+    },
   };
 }
 
@@ -79,6 +90,13 @@ export async function savePriorityMarkets(markets) {
   const { error } = await supabase
     .from("app_settings")
     .upsert({ key: "priority_markets", value: markets });
+  if (error) throw error;
+}
+
+export async function saveManagedList(field, values) {
+  const key = MANAGED_LIST_KEYS[field];
+  if (!key) throw new Error(`Unknown managed list: ${field}`);
+  const { error } = await supabase.from("app_settings").upsert({ key, value: values });
   if (error) throw error;
 }
 

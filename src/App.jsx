@@ -6,6 +6,7 @@ import {
   fetchDeals,
   fetchAppSettings,
   savePriorityMarkets,
+  saveManagedList,
   insertDeal,
   insertDeals,
   updateDealField,
@@ -1524,7 +1525,7 @@ function ManageListsModal({ deals, groups, markets, owners, priorityMarkets, onT
           <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Manage lists</h2>
           <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 9, width: 30, height: 30, fontSize: 16, cursor: "pointer", color: "#64748b" }}>✕</button>
         </div>
-        <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 22px" }}>Add, rename, or delete options. Renaming updates every deal using that value. Deleting clears it from affected deals.</p>
+        <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 22px" }}>Add, rename, or delete options. New entries are saved and appear in filters and dropdowns across the app. Renaming updates every deal using that value. Deleting clears it from affected deals.</p>
         <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
           <ListEditor title="Restaurant Groups" field="group" options={groups} deals={deals} onAdd={onAdd} onRename={onRename} onDelete={onDelete} />
           <ListEditor title="Markets" field="market" options={markets} deals={deals} onAdd={onAdd} onRename={onRename} onDelete={onDelete} />
@@ -1803,17 +1804,22 @@ export default function App() {
   const [manageOpen, setManageOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
-  const [groups, setGroups] = useState([]);
-  const [markets, setMarkets] = useState([]);
-  const [owners, setOwners] = useState([]);
+  const [savedLists, setSavedLists] = useState({ group: [], market: [], owner: [] });
   const [priorityMarkets, setPriorityMarkets] = useState([]);
 
-  const syncListsFromDeals = useCallback((dealList) => {
+  const dealLists = useMemo(() => {
     const clean = (v) => (v == null ? "" : String(v).trim());
-    setGroups([...new Set(dealList.map(d => clean(d.group)).filter(Boolean))].sort());
-    setMarkets([...new Set(dealList.map(d => clean(d.market)).filter(Boolean))].sort());
-    setOwners([...new Set(dealList.flatMap(d => parseMultiValue(d.owner)).filter(Boolean))].sort());
-  }, []);
+    return {
+      group: [...new Set(deals.map(d => clean(d.group)).filter(Boolean))],
+      market: [...new Set(deals.map(d => clean(d.market)).filter(Boolean))],
+      owner: [...new Set(deals.flatMap(d => parseMultiValue(d.owner)).filter(Boolean))],
+    };
+  }, [deals]);
+
+  const mergeSortedLists = (a, b) => [...new Set([...a, ...b].filter(Boolean))].sort();
+  const groups = useMemo(() => mergeSortedLists(dealLists.group, savedLists.group), [dealLists, savedLists]);
+  const markets = useMemo(() => mergeSortedLists(dealLists.market, savedLists.market), [dealLists, savedLists]);
+  const owners = useMemo(() => mergeSortedLists(dealLists.owner, savedLists.owner), [dealLists, savedLists]);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -1822,14 +1828,14 @@ export default function App() {
       const [rows, settings] = await Promise.all([fetchDeals(), fetchAppSettings()]);
       const computed = rows.map(recompute);
       setDeals(computed);
-      syncListsFromDeals(computed);
+      setSavedLists(settings.managedLists || { group: [], market: [], owner: [] });
       setPriorityMarkets(settings.priorityMarkets?.length ? settings.priorityMarkets : ["New York", "London", "LA", "Miami", "Chicago", "Dubai", "SF"]);
     } catch (e) {
       setDbError(e.message || "Failed to load pipeline data.");
     } finally {
       setLoading(false);
     }
-  }, [syncListsFromDeals]);
+  }, []);
 
   useEffect(() => {
     if (!supabaseConfigured || !supabase) {
@@ -1892,9 +1898,6 @@ export default function App() {
     try {
       const saved = await insertDeal(payload);
       const rec = recompute(saved);
-      if (group && !groups.includes(group)) setGroups(l => [...l, group].sort());
-      if (draft.market && !markets.includes(draft.market)) setMarkets(l => [...l, draft.market].sort());
-      if (draft.owner && !owners.includes(draft.owner)) setOwners(l => [...l, draft.owner].sort());
       setDeals(ds => [rec, ...ds]);
       setDbError("");
     } catch (e) {
@@ -1933,13 +1936,6 @@ export default function App() {
       });
       await insertDeals(added);
       await loadAll();
-      const allRows = [...toAdd, ...toUpdate.map(u => u.row)];
-      const newGroups = [...new Set(allRows.map(r => r.group).filter(Boolean))].filter(g => !groups.includes(g));
-      const newMarkets = [...new Set(allRows.map(r => r.market).filter(Boolean))].filter(m => !markets.includes(m));
-      const newOwners = [...new Set(allRows.flatMap(r => parseMultiValue(r.owner)).filter(Boolean))].filter(o => !owners.includes(o));
-      if (newGroups.length) setGroups(l => [...new Set([...l, ...newGroups])].sort());
-      if (newMarkets.length) setMarkets(l => [...new Set([...l, ...newMarkets])].sort());
-      if (newOwners.length) setOwners(l => [...new Set([...l, ...newOwners])].sort());
       setDbError("");
     } catch (e) {
       persistError(e);
@@ -1948,14 +1944,32 @@ export default function App() {
     }
   };
 
-  const listSetters = { group: setGroups, market: setMarkets, owner: setOwners };
-  const addOption = (field, value) => {
-    const v = value.trim(); if (!v) return;
-    listSetters[field](list => list.includes(v) ? list : [...list, v].sort());
+  const updateSavedList = async (field, nextList) => {
+    setSavedLists(prev => ({ ...prev, [field]: nextList }));
+    try {
+      await saveManagedList(field, nextList);
+      setDbError("");
+    } catch (e) {
+      persistError(e);
+      await loadAll();
+    }
   };
+
+  const addOption = async (field, value) => {
+    const v = value.trim();
+    if (!v) return;
+    const merged = mergeSortedLists(dealLists[field], savedLists[field]);
+    if (merged.includes(v)) return;
+    await updateSavedList(field, [...savedLists[field], v].sort());
+  };
+
   const renameOption = async (field, oldV, newV) => {
     const v = newV.trim(); if (!v || v === oldV) return;
-    listSetters[field](list => [...new Set(list.map(x => x === oldV ? v : x))].sort());
+    const merged = mergeSortedLists(dealLists[field], savedLists[field]);
+    let nextSaved = savedLists[field].map(x => x === oldV ? v : x);
+    if (!nextSaved.includes(v) && merged.includes(oldV)) nextSaved = [...nextSaved, v];
+    nextSaved = [...new Set(nextSaved)].filter(Boolean).sort();
+    await updateSavedList(field, nextSaved);
     const affected = deals.filter(d => dealFieldIncludes(d, field, oldV));
     setDeals(ds => ds.map(d => dealFieldIncludes(d, field, oldV)
       ? recompute({ ...d, [field]: field === "owner" ? replaceInMultiValue(d[field], oldV, v) : v })
@@ -1973,7 +1987,8 @@ export default function App() {
     }
   };
   const deleteOption = async (field, value) => {
-    listSetters[field](list => list.filter(x => x !== value));
+    const nextSaved = savedLists[field].filter(x => x !== value);
+    await updateSavedList(field, nextSaved);
     const affected = deals.filter(d => dealFieldIncludes(d, field, value));
     setDeals(ds => ds.map(d => {
       if (!dealFieldIncludes(d, field, value)) return d;
