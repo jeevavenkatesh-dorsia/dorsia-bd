@@ -980,6 +980,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
   const toggleTask = (id) => set("tasks", tasks.map(t => t.id === id ? { ...t, done: !t.done } : t));
   const addMeeting = (m) => set("meetings", [...meetings, { id: "m" + Date.now(), ...m }]);
   const addContact = (c) => set("contacts", [...contacts, { id: "c" + Date.now(), ...c }]);
+  const removeContact = (id) => set("contacts", contacts.filter(c => c.id !== id));
 
   const [taskDraft, setTaskDraft] = useState("");
   const [meetingOpen, setMeetingOpen] = useState(false);
@@ -1185,6 +1186,20 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
                     <div style={{ fontSize: 13.5, fontWeight: 600, color: "#334155" }}>{c.name}</div>
                     <div style={{ fontSize: 12, color: "#94a3b8" }}>{[c.email, c.phone].filter(Boolean).join(" · ") || "No contact details"}</div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => removeContact(c.id)}
+                    title="Remove contact"
+                    style={{
+                      width: 26, height: 26, borderRadius: 999, flexShrink: 0, border: "1px solid #e5e7eb",
+                      background: "#fff", color: "#94a3b8", fontSize: 16, lineHeight: 1, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", padding: 0, fontFamily: "inherit",
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = "#fecaca"; e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.background = "#fef2f2"; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = "#e5e7eb"; e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.background = "#fff"; }}
+                  >
+                    −
+                  </button>
                 </div>
               ))}
             </div>
