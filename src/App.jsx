@@ -483,39 +483,154 @@ function DetailRow({ label, value, accent }) {
     </div>
   );
 }
+function cleanDetailValue(v) {
+  if (v == null) return "";
+  return String(v).trim();
+}
+
+function normalizeSelectOptions(options, currentValue) {
+  const seen = new Set();
+  const list = [];
+  const add = (v) => {
+    const s = cleanDetailValue(v);
+    if (!s || seen.has(s)) return;
+    seen.add(s);
+    list.push(s);
+  };
+  add(currentValue);
+  for (const o of options || []) add(o);
+  return list;
+}
+
+// Custom single-select dropdown — inline styles only (same pattern as MultiFilter).
+function InlineSelect({ value, options, onChange, onClose, placeholder, allowBlank, compact }) {
+  const [query, setQuery] = useState("");
+  const ref = useRef(null);
+  const searchRef = useRef(null);
+  const selectOptions = normalizeSelectOptions(options, value);
+  const showSearch = selectOptions.length > 3;
+  const current = cleanDetailValue(value);
+  const q = query.trim().toLowerCase();
+  const filtered = q ? selectOptions.filter(o => o.toLowerCase().includes(q)) : selectOptions;
+  const menuWidth = compact ? 220 : 260;
+
+  const menuStyle = {
+    position: "absolute", top: "100%", right: 0, marginTop: 4, zIndex: 400,
+    width: menuWidth, background: "#ffffff", border: "1px solid #e5e7eb",
+    borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: "4px 0",
+    maxHeight: 260, overflowY: "auto",
+  };
+  const itemStyle = (active) => ({
+    display: "block", width: "100%", textAlign: "left", padding: compact ? "7px 10px" : "8px 12px",
+    cursor: "pointer", fontSize: compact ? 12.5 : 13, color: "#334155", background: active ? "#faf5ff" : "#ffffff",
+    fontWeight: active ? 600 : 400, fontFamily: "inherit", lineHeight: 1.4,
+  });
+  const inputStyle = {
+    width: menuWidth, fontSize: compact ? 12.5 : 13, padding: compact ? "5px 8px" : "6px 10px",
+    borderRadius: 7, border: "1.5px solid #a78bfa", color: "#0f172a", background: "#ffffff",
+  };
+
+  useEffect(() => {
+    if (showSearch) searchRef.current?.focus();
+  }, [showSearch]);
+
+  useEffect(() => {
+    const close = (e) => { if (!ref.current?.contains(e.target)) onClose?.(); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [onClose]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const pick = (v) => { onChange(v); onClose?.(); };
+
+  return (
+    <div ref={ref} style={{ position: "relative", zIndex: 400, display: "inline-block" }}>
+      {showSearch ? (
+        <input
+          ref={searchRef}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search…"
+          onKeyDown={e => { if (e.key === "Escape") onClose?.(); }}
+          style={inputStyle}
+        />
+      ) : (
+        <span style={{ fontSize: compact ? 12.5 : 13.5, color: "#0f172a", fontWeight: 500 }}>
+          {current || placeholder || "Select…"}
+        </span>
+      )}
+      <div style={menuStyle}>
+        {allowBlank && (
+          <label style={{ ...itemStyle(!current), display: "block" }} onMouseDown={(e) => { e.preventDefault(); pick(""); }}>
+            <span style={{ color: "#94a3b8" }}>{placeholder || "—"}</span>
+          </label>
+        )}
+        {filtered.map(o => (
+          <label key={o} style={{ ...itemStyle(o === current), display: "block" }} onMouseDown={(e) => { e.preventDefault(); pick(o); }}>
+            <span style={{ color: "#334155" }}>{o}</span>
+          </label>
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8", background: "#ffffff" }}>No matches</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Editable variant: click the value to edit. Supports dropdown options, plain text, or a custom display renderer.
 function EditableDetailRow({ label, value, options, onChange, accent, placeholder, render }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
-  useEffect(() => { if (editing && ref.current) ref.current.focus(); }, [editing]);
+  const textValue = cleanDetailValue(value);
+  useEffect(() => { if (editing && !options && ref.current) ref.current.focus(); }, [editing, options]);
+
+  const emptyDisplay = <span style={{ color: "#94a3b8", fontStyle: "italic", fontWeight: 400 }}>{placeholder || "—"}</span>;
+  const getDisplay = () => {
+    if (render) {
+      const rendered = render(value);
+      if (rendered != null && rendered !== false) return rendered;
+    }
+    if (textValue) return <span style={{ color: accent || "#0f172a", fontWeight: 500 }}>{textValue}</span>;
+    return emptyDisplay;
+  };
 
   let body;
   if (editing && options) {
+    const allowBlank = (options || []).some(o => cleanDetailValue(o) === "");
     body = (
-      <select ref={ref} value={value} onChange={e => { onChange(e.target.value); setEditing(false); }} onBlur={() => setEditing(false)}
-        style={{ fontSize: 13.5, padding: "4px 8px", borderRadius: 7, border: "1.5px solid #a78bfa", background: "#fff", cursor: "pointer", maxWidth: 220 }}>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
+      <InlineSelect
+        value={value}
+        options={options}
+        placeholder={placeholder}
+        allowBlank={allowBlank}
+        onChange={onChange}
+        onClose={() => setEditing(false)}
+      />
     );
   } else if (editing) {
     body = (
-      <input ref={ref} defaultValue={value} placeholder={placeholder}
+      <input ref={ref} defaultValue={value ?? ""} placeholder={placeholder}
         onBlur={e => { onChange(e.target.value); setEditing(false); }}
         onKeyDown={e => { if (e.key === "Enter") { onChange(e.target.value); setEditing(false); } if (e.key === "Escape") setEditing(false); }}
-        style={{ fontSize: 13.5, padding: "4px 8px", borderRadius: 7, border: "1.5px solid #a78bfa", textAlign: "right", width: 200 }} />
+        style={{ fontSize: 13.5, padding: "4px 8px", borderRadius: 7, border: "1.5px solid #a78bfa", textAlign: "right", width: 200, color: "#0f172a" }} />
     );
   } else {
-    const display = render ? render(value) : (value || <span style={{ color: "#cbd5e1" }}>{placeholder || "—"}</span>);
     body = (
-      <span onClick={() => setEditing(true)} title="Click to edit" style={{ cursor: "pointer", borderRadius: 6, padding: "1px 4px", display: "inline-flex", alignItems: "center", gap: 6, color: accent || "#0f172a", fontWeight: 500 }}
+      <span onClick={() => setEditing(true)} title="Click to edit" style={{ cursor: "pointer", borderRadius: 6, padding: "1px 4px", display: "inline-flex", alignItems: "center", gap: 6, minHeight: 20 }}
         onMouseEnter={e => e.currentTarget.style.background = "#faf5ff"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-        {display}
+        {getDisplay()}
         <span style={{ fontSize: 11, color: "#cbd5e1" }}>✎</span>
       </span>
     );
   }
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "9px 0", borderBottom: "1px solid #f4f4f7", gap: 16 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "9px 0", borderBottom: "1px solid #f4f4f7", gap: 16, position: "relative", zIndex: editing ? 50 : "auto" }}>
       <span style={{ fontSize: 13, color: "#94a3b8" }}>{label}</span>
       <span style={{ fontSize: 13.5, textAlign: "right" }}>{body}</span>
     </div>
@@ -781,14 +896,17 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
 function EditableCell({ value, options, onChange, render }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
-  useEffect(() => { if (editing && ref.current) ref.current.focus(); }, [editing]);
+  useEffect(() => { if (editing && !options && ref.current) ref.current.focus(); }, [editing, options]);
 
   if (editing && options) {
     return (
-      <select ref={ref} value={value} onChange={e => { onChange(e.target.value); setEditing(false); }} onBlur={() => setEditing(false)}
-        style={{ fontSize: 13, padding: "4px 6px", borderRadius: 7, border: "1.5px solid #a78bfa", background: "#fff", cursor: "pointer" }}>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
+      <InlineSelect
+        value={value}
+        options={options}
+        onChange={onChange}
+        onClose={() => setEditing(false)}
+        compact
+      />
     );
   }
   if (editing && !options) {
@@ -1306,8 +1424,9 @@ export default function App() {
   const [priorityMarkets, setPriorityMarkets] = useState([]);
 
   const syncListsFromDeals = useCallback((dealList) => {
-    setGroups([...new Set(dealList.map(d => d.group).filter(Boolean))].sort());
-    setMarkets([...new Set(dealList.map(d => d.market).filter(Boolean))].sort());
+    const clean = (v) => (v == null ? "" : String(v).trim());
+    setGroups([...new Set(dealList.map(d => clean(d.group)).filter(Boolean))].sort());
+    setMarkets([...new Set(dealList.map(d => clean(d.market)).filter(Boolean))].sort());
     setOwners([...new Set(dealList.map(d => d.owner).filter(Boolean))].sort());
   }, []);
 
@@ -1531,12 +1650,14 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f7f7fb", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", color: "#0f172a" }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+      <style>{`
         * { box-sizing: border-box; }
-        button { font-family: inherit; }
-        html, body, #root { margin: 0; padding: 0; width: 100%; min-height: 100%; }
-        body { display: block; place-items: initial; background: #f7f7fb; }
-        #root { max-width: none; margin: 0; padding: 0; text-align: left; }
+        html, body, #root { margin: 0; padding: 0; width: 100%; min-height: 100%; color-scheme: light only; }
+        body { display: block; place-items: initial; background: #f7f7fb; color: #0f172a; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        #root { max-width: none; margin: 0; padding: 0; text-align: left; color: #0f172a; }
+        button { font-family: inherit; color: inherit; }
+        select, option { color-scheme: light only; color: #0f172a; background-color: #fff; }
+        input, textarea { color: #0f172a; background-color: #fff; }
       `}</style>
 
       <div style={{ maxWidth: 1320, margin: "0 auto", padding: "28px 28px 60px" }}>

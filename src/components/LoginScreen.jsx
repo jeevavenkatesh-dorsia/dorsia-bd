@@ -40,13 +40,15 @@ export default function LoginScreen() {
   const box = {
     fontSize: 14, padding: "10px 12px", borderRadius: 10,
     border: "1px solid #e5e7eb", width: "100%", boxSizing: "border-box",
+    background: "#f1f5f9", color: "#0f172a", colorScheme: "light",
   };
 
   return (
     <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      minHeight: "100vh", width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
       background: "linear-gradient(160deg, #f8f7fb 0%, #ede9fe 100%)", padding: 24,
     }}>
+      <style>{`.login-input::placeholder { color: #94a3b8; opacity: 1; }`}</style>
       <div style={{
         width: "100%", maxWidth: 400, background: "#fff", borderRadius: 20,
         border: "1px solid #eef0f4", padding: "32px 28px", boxShadow: "0 12px 40px rgba(30,27,75,0.08)",
@@ -66,6 +68,7 @@ export default function LoginScreen() {
             placeholder="Work email"
             value={email}
             onChange={e => setEmail(e.target.value)}
+            className="login-input"
             style={box}
           />
           {mode === "password" && (
@@ -76,6 +79,7 @@ export default function LoginScreen() {
               placeholder="Password"
               value={password}
               onChange={e => setPassword(e.target.value)}
+              className="login-input"
               style={box}
             />
           )}
