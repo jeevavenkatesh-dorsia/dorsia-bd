@@ -25,6 +25,24 @@ const isOnboarded = d => d.stage === "Onboarded";
 const STATUSES = ["Progressing", "Stuck", "Not a priority"];
 const BLOCKERS = ["Price", "Control", "Unresponsive", "Brand", "Logistics", "No need", "Fees", "Min Spend"];
 
+function fieldCounts(deals, field) {
+  const counts = {};
+  for (const d of deals || []) {
+    const v = d[field] == null ? "" : String(d[field]).trim();
+    if (v) counts[v] = (counts[v] || 0) + 1;
+  }
+  return counts;
+}
+
+function statusCounts(deals) {
+  const counts = Object.fromEntries(STATUSES.map(s => [s, 0]));
+  for (const d of deals || []) {
+    const s = (d.status || "").trim();
+    if (s) counts[s] = (counts[s] || 0) + 1;
+  }
+  return counts;
+}
+
 // Maps old/source stage names (from CSV uploads) to the 4 pipeline stages.
 const STAGE_MAP = {
   "prospect": "Lead",
@@ -405,7 +423,7 @@ function PipelineCard({ deal, onClick }) {
   );
 }
 
-function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, tierCountMap, onFilteredCountChange }) {
+function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, tierCountMap, statusCountMap, marketCountMap, ownerCountMap, onFilteredCountChange }) {
   const [fStatus, setFStatus] = useState([]);
   const [fMarket, setFMarket] = useState([]);
   const [fOwner, setFOwner] = useState([]);
@@ -432,9 +450,9 @@ function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, tierCountMap, 
     <div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <MultiFilter label="All Tiers" options={tiers} selected={fTier} onChange={setFTier} counts={tierCountMap} />
-        <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} />
-        <MultiFilter label="All Markets" options={markets.filter(Boolean)} selected={fMarket} onChange={setFMarket} />
-        <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} />
+        <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} counts={statusCountMap} />
+        <MultiFilter label="All Markets" options={markets.filter(Boolean)} selected={fMarket} onChange={setFMarket} counts={marketCountMap} />
+        <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} counts={ownerCountMap} />
         {active > 0 && <button onClick={() => { setFStatus([]); setFMarket([]); setFOwner([]); setFTier([]); }} style={{ ...selStyle, color: "#7c3aed", fontWeight: 600 }}>Clear filters</button>}
         <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>{filtered.length} of {deals.length} deals</span>
       </div>
@@ -926,7 +944,7 @@ function EditableCell({ value, options, onChange, render }) {
   );
 }
 
-function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onFilteredCountChange }) {
+function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statusCountMap, ownerCountMap, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onFilteredCountChange }) {
   const [search, setSearch] = useState("");
   const [fStage, setFStage] = useState([]);
   const [fStatus, setFStatus] = useState([]);
@@ -974,8 +992,8 @@ function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, onUpd
           style={{ flex: 1, minWidth: 200, fontSize: 13, padding: "9px 14px", borderRadius: 10, border: "1px solid #e5e7eb" }} />
         <MultiFilter label="All Tiers" options={tiers} selected={fTier} onChange={setFTier} counts={tierCountMap} />
         <MultiFilter label="All Stages" options={STAGES} selected={fStage} onChange={setFStage} />
-        <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} />
-        <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} />
+        <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} counts={statusCountMap} />
+        <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} counts={ownerCountMap} />
         {filtersActive > 0 && <button onClick={() => { setFStage([]); setFStatus([]); setFOwner([]); setFTier([]); }} style={{ ...selStyle, color: "#7c3aed", fontWeight: 600 }}>Clear filters</button>}
         <button onClick={onManageLists} style={{ ...selStyle, fontWeight: 600 }}>⚙ Manage lists</button>
         <button onClick={onImport} style={{ ...selStyle, fontWeight: 600 }}>⬆ Import CSV</button>
@@ -1475,6 +1493,9 @@ export default function App() {
   const tasks = useMemo(() => buildTasks(deals), [deals]);
   const tiers = useMemo(() => tierOptions(deals), [deals]);
   const tierCountMap = useMemo(() => tierCounts(deals), [deals]);
+  const statusCountMap = useMemo(() => statusCounts(deals), [deals]);
+  const marketCountMap = useMemo(() => fieldCounts(deals, "market"), [deals]);
+  const ownerCountMap = useMemo(() => fieldCounts(deals, "owner"), [deals]);
 
   const persistError = (e) => setDbError(e?.message || "Save failed. Your change may not have been stored.");
 
@@ -1699,8 +1720,8 @@ export default function App() {
             )}
 
             {tab === "dashboard" && <DashboardTab deals={deals} insights={insights} tasks={tasks} onOpenDeal={goDeal} priorityMarkets={priorityMarkets} />}
-            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} owners={owners} markets={markets} tiers={tiers} tierCountMap={tierCountMap} onFilteredCountChange={reportFilteredCount} />}
-            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} tierCountMap={tierCountMap} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} />}
+            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} owners={owners} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} onFilteredCountChange={reportFilteredCount} />}
+            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} ownerCountMap={ownerCountMap} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} />}
             {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={() => setTab("pipeline")} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} tiers={tiers} />}
           </>
         )}
