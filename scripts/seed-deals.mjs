@@ -32,7 +32,7 @@ const APP_TO_DB = {
 function dealToRow(deal) {
   const row = {};
   for (const [key, value] of Object.entries(deal)) {
-    if (["staleDays", "lastContactDisplay", "ownerInitials"].includes(key)) continue;
+    if (key === "id" || ["staleDays", "lastContactDisplay", "ownerInitials"].includes(key)) continue;
     const dbKey = APP_TO_DB[key] || key;
     row[dbKey] = value ?? "";
   }
@@ -64,3 +64,9 @@ for (let i = 0; i < rows.length; i += batchSize) {
 }
 
 console.log("Seed complete.");
+
+// Identity sequence does not advance when rows insert explicit ids — fix for future inserts.
+const { error: seqErr } = await supabase.rpc("reset_deals_id_sequence");
+if (seqErr) {
+  console.warn("Could not reset id sequence automatically. Run supabase/fix-deals-id-sequence.sql in SQL Editor.");
+}

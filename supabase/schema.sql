@@ -121,3 +121,17 @@ drop trigger if exists app_settings_updated_at on public.app_settings;
 create trigger app_settings_updated_at
   before update on public.app_settings
   for each row execute function public.set_updated_at();
+
+-- Reset auto-id after bulk inserts that supply explicit ids (seed/import recovery)
+create or replace function public.reset_deals_id_sequence()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  select setval(
+    pg_get_serial_sequence('public.deals', 'id'),
+    coalesce((select max(id) from public.deals), 0) + 1,
+    false
+  );
+$$;
