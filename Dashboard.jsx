@@ -91,47 +91,6 @@ function ownerColor(name) {
 }
 
 // Parse a spoken transcript into draft deal fields. Matches against known lists for fuzzy fields.
-function parseVoiceDraft(text, { groups, markets, owners }) {
-  const raw = text.trim().replace(/[.]$/, "");
-  const lc = " " + raw.toLowerCase() + " ";
-  const draft = { tier: "", venue: "", group: "", market: "", stage: "", status: "", owner: "", lastContact: "" };
-
-  // Tier: "A plus" / "A+" / "tier A" / B / C / D
-  if (/\ba\s*(plus|\+)\b/i.test(raw)) draft.tier = "A+";
-  else if (/\btier\s*b\b/i.test(raw)) draft.tier = "B";
-  else if (/\btier\s*c\b/i.test(raw)) draft.tier = "C";
-  else if (/\btier\s*d\b/i.test(raw)) draft.tier = "D";
-  else if (/\btier\s*a\b/i.test(raw)) draft.tier = "A";
-
-  // Stage — prefer an explicit "stage X"; else first stage keyword by word boundary
-  const stageWords = { "lead": "Lead", "conversation": "Conversation", "offer sent": "Offer Sent", "offer": "Offer Sent", "signed": "Signed" };
-  const sm = lc.match(/\bstage\s+(lead|conversation|offer sent|offer|signed)\b/);
-  if (sm) draft.stage = stageWords[sm[1]];
-  else { for (const k of Object.keys(stageWords)) if (new RegExp(`\\b${k}\\b`).test(lc) && k !== "lead") { draft.stage = stageWords[k]; break; } }
-
-  // Status
-  if (/not a priority|deprioritize/.test(lc)) draft.status = "Not a priority";
-  else if (/\b(stuck|blocked|stalled)\b/.test(lc)) draft.status = "Stuck";
-  else if (/progress/.test(lc)) draft.status = "Progressing";
-
-  // Market — match against known markets (longest first)
-  for (const mk of [...markets].filter(Boolean).sort((a, b) => b.length - a.length)) if (lc.includes(" " + mk.toLowerCase())) { draft.market = mk; break; }
-  // Group — match against known groups (longest first, skip "No Group")
-  for (const g of [...groups].filter(Boolean).sort((a, b) => b.length - a.length)) if (g !== "No Group" && lc.includes(g.toLowerCase())) { draft.group = g; break; }
-  // Owner — full name or first name on a word boundary
-  for (const o of owners.filter(Boolean)) {
-    const first = o.split(" ")[0].toLowerCase();
-    if (lc.includes(o.toLowerCase()) || new RegExp(`\\b${first}\\b`).test(lc)) { draft.owner = o; break; }
-  }
-
-  // Venue — capture after a lead-in verb, stop at the first field keyword or comma
-  const STOP = "(?:,|\\btier\\b|\\ba plus\\b|\\ba\\+|\\bin\\b|\\bstage\\b|\\bowner\\b|\\blead\\b|\\bstatus\\b|\\bgroup\\b|\\bmarket\\b|\\bpriority\\b|\\bstuck\\b|\\bprogress|\\bsigned\\b|\\bconversation\\b|\\bto the pipeline\\b)";
-  const vm = raw.match(new RegExp(`(?:add|restaurant|venue|called|named|deal for|spot)\\s+(.+?)(?:\\s+${STOP}|$)`, "i"));
-  if (vm) draft.venue = vm[1].trim().replace(/[,.]$/, "");
-  return draft;
-}
-
-
 // ============ SMALL UI PRIMITIVES ============
 function StatusTag({ status, size = "sm" }) {
   const s = STATUS_STYLE[status] || STATUS_STYLE["Not a priority"];
@@ -855,33 +814,10 @@ function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, onUpd
   const [fTier, setFTier] = useState([]);
   const [sort, setSort] = useState({ key: "venue", dir: 1 });
   const [draft, setDraft] = useState(null); // null = no draft open
-  const [listening, setListening] = useState(false);
-  const [voiceError, setVoiceError] = useState("");
-  const recogRef = useRef(null);
 
   const REQUIRED = ["tier", "venue"];
   const startDraft = () => setDraft({ tier: "", venue: "", group: "", market: "", stage: "", status: "", owner: "", lastContact: "" });
 
-  const startVoice = () => {
-    const SR = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
-    if (!SR) { setVoiceError("Voice input isn't supported in this browser. Try Chrome."); return; }
-    setVoiceError("");
-    const r = new SR();
-    r.lang = "en-US"; r.interimResults = false; r.maxAlternatives = 1;
-    r.onresult = e => {
-      const transcript = e.results[0][0].transcript;
-      const parsed = parseVoiceDraft(transcript, { groups, markets, owners });
-      setDraft(d => ({ ...(d || { tier: "", venue: "", group: "", market: "", stage: "", status: "", owner: "", lastContact: "" }), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v)) }));
-      setListening(false);
-    };
-    r.onerror = ev => { setVoiceError(ev.error === "not-allowed" ? "Microphone access was blocked. Allow it and try again." : "Couldn't capture audio. Try again."); setListening(false); };
-    r.onend = () => setListening(false);
-    recogRef.current = r;
-    setListening(true);
-    if (!draft) startDraft();
-    r.start();
-  };
-  const stopVoice = () => { if (recogRef.current) recogRef.current.stop(); setListening(false); };
   const setDraftField = (k, v) => setDraft(d => ({ ...d, [k]: v }));
   const missing = draft ? REQUIRED.filter(k => !String(draft[k]).trim()) : [];
   const draftComplete = draft && missing.length === 0;
@@ -923,17 +859,9 @@ function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, onUpd
         {filtersActive > 0 && <button onClick={() => { setFStage([]); setFStatus([]); setFOwner([]); setFTier([]); }} style={{ ...selStyle, color: "#7c3aed", fontWeight: 600 }}>Clear filters</button>}
         <button onClick={onManageLists} style={{ ...selStyle, fontWeight: 600 }}>⚙ Manage lists</button>
         <button onClick={onImport} style={{ ...selStyle, fontWeight: 600 }}>⬆ Import CSV</button>
-        <button onClick={listening ? stopVoice : startVoice} style={{ ...selStyle, fontWeight: 600, background: listening ? "#fef2f2" : "#fff", color: listening ? "#dc2626" : "#475569", borderColor: listening ? "#fca5a5" : "#e5e7eb" }}>{listening ? "● Listening… tap to stop" : "🎙 Add by voice"}</button>
-        <button onClick={startDraft} disabled={!!draft && !listening} style={{ ...selStyle, background: draft ? "#ede9fe" : "#6d28d9", color: draft ? "#a78bfa" : "#fff", fontWeight: 600, border: "none", cursor: draft ? "default" : "pointer" }}>+ Add Deal</button>
+        <button onClick={startDraft} disabled={!!draft} style={{ ...selStyle, background: draft ? "#ede9fe" : "#6d28d9", color: draft ? "#a78bfa" : "#fff", fontWeight: 600, border: "none", cursor: draft ? "default" : "pointer" }}>+ Add Deal</button>
         <button onClick={() => onExport(filtered)} style={{ ...selStyle, background: "#1e1b4b", color: "#fff", fontWeight: 600, border: "none" }}>⬇ Export CSV</button>
       </div>
-
-      {(listening || voiceError) && (
-        <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 10, fontSize: 13,
-          background: voiceError ? "#fef2f2" : "#faf5ff", color: voiceError ? "#b91c1c" : "#6d28d9", border: `1px solid ${voiceError ? "#fecaca" : "#e9d5ff"}` }}>
-          {voiceError || "Listening… try: \"Add Carbone, A plus, New York, Major Food Group, stage conversation, lead Steffi, progressing\""}
-        </div>
-      )}
 
       <div style={{ background: "#fff", border: "1px solid #eef0f4", borderRadius: 16, overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
