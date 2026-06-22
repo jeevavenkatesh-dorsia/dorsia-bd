@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { supabase } from "../lib/supabase.js";
+import BrandWordmark from "./BrandWordmark.jsx";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -50,12 +51,8 @@ export default function LoginScreen() {
         width: "100%", maxWidth: 400, background: "#fff", borderRadius: 20,
         border: "1px solid #eef0f4", padding: "32px 28px", boxShadow: "0 12px 40px rgba(30,27,75,0.08)",
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <span style={{
-            width: 36, height: 36, borderRadius: 10, background: "#1e1b4b", color: "#fff",
-            display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700,
-          }}>D</span>
-          <span style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>Dorsia BD Pipeline</span>
+        <div style={{ marginBottom: 8 }}>
+          <BrandWordmark size={20} />
         </div>
         <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 24px", lineHeight: 1.5 }}>
           Sign in with your Dorsia account. Access is restricted to invited team members.

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { supabase, supabaseConfigured } from "./src/lib/supabase.js";
 import LoginScreen from "./src/components/LoginScreen.jsx";
+import BrandWordmark from "./src/components/BrandWordmark.jsx";
 import {
   fetchDeals,
   fetchAppSettings,
@@ -1540,10 +1541,7 @@ export default function App() {
 
       <div style={{ maxWidth: 1320, margin: "0 auto", padding: "28px 28px 60px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22, gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: "#1e1b4b", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15 }}>D</div>
-            <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.3 }}>Dorsia · BD Pipeline</span>
-          </div>
+          <BrandWordmark size={16} />
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 12, color: "#64748b" }}>{session.user.email}</span>
             <button onClick={signOut} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 9, padding: "7px 12px", fontSize: 13, cursor: "pointer", color: "#475569" }}>Sign out</button>
