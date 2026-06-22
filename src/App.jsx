@@ -26,14 +26,32 @@ const isOnboarded = d => d.stage === "Onboarded";
 const STATUSES = ["Progressing", "Stuck", "Not a priority"];
 const BLOCKERS = ["Price", "Control", "Unresponsive", "Brand", "Logistics", "No need", "Fees", "Min Spend"];
 
-function parseBlockers(value) {
+function parseMultiValue(value) {
   const s = value == null ? "" : String(value).trim();
   if (!s) return [];
   return s.split(/\s+\+\s+/).map(x => x.trim()).filter(Boolean);
 }
 
-function formatBlockers(list) {
+function formatMultiValue(list) {
   return list.filter(Boolean).join(" + ");
+}
+
+const parseBlockers = parseMultiValue;
+const formatBlockers = formatMultiValue;
+
+function replaceInMultiValue(current, oldV, newV) {
+  const parts = parseMultiValue(current);
+  if (!parts.includes(oldV)) return current;
+  return formatMultiValue(parts.map(x => x === oldV ? newV : x));
+}
+
+function removeFromMultiValue(current, value) {
+  return formatMultiValue(parseMultiValue(current).filter(x => x !== value));
+}
+
+function dealFieldIncludes(deal, field, value) {
+  if (field === "owner") return parseMultiValue(deal[field]).includes(value);
+  return deal[field] === value;
 }
 
 function parseIsoDate(value) {
@@ -52,8 +70,10 @@ const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 function fieldCounts(deals, field) {
   const counts = {};
   for (const d of deals || []) {
-    const v = d[field] == null ? "" : String(d[field]).trim();
-    if (v) counts[v] = (counts[v] || 0) + 1;
+    const raw = d[field] == null ? "" : String(d[field]).trim();
+    if (!raw) continue;
+    const vals = field === "owner" ? parseMultiValue(raw) : [raw];
+    for (const v of vals) counts[v] = (counts[v] || 0) + 1;
   }
   return counts;
 }
@@ -180,8 +200,28 @@ function Avatar({ name, size = 24 }) {
   );
 }
 
+function OwnerDisplay({ owner, size = 20, showNames = true }) {
+  const names = parseMultiValue(owner);
+  if (!names.length) return <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Unassigned</span>;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 7, flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <span style={{ display: "inline-flex", alignItems: "center" }}>
+        {names.map((n, i) => (
+          <span key={n} style={{ marginLeft: i ? -5 : 0, zIndex: names.length - i, border: "2px solid #fff", borderRadius: 999 }}>
+            <Avatar name={n} size={size} />
+          </span>
+        ))}
+      </span>
+      {showNames && <span style={{ color: "#475569" }}>{formatMultiValue(names)}</span>}
+    </span>
+  );
+}
+
 function matchesMulti(selected, value) {
-  return !selected.length || selected.includes(value);
+  if (!selected.length) return true;
+  const values = parseMultiValue(value);
+  if (values.length) return values.some(v => selected.includes(v));
+  return selected.includes(value);
 }
 
 function MultiFilter({ label, options, selected, onChange, style, counts }) {
@@ -433,7 +473,11 @@ function PipelineCard({ deal, onClick }) {
       <div style={{ marginTop: 10, marginBottom: 10 }}><StatusTag status={isOnboarded(deal) ? "Onboarded" : deal.status} /></div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Avatar name={deal.owner} size={20} />
+          {parseMultiValue(deal.owner).slice(0, 2).map((n, i) => (
+            <span key={n} style={{ marginLeft: i ? -4 : 0 }}>
+              <Avatar name={n} size={20} />
+            </span>
+          ))}
           <span style={{ fontSize: 11, color: "#64748b" }}>{deal.market}</span>
         </div>
         <span style={{ fontSize: 11, color: "#94a3b8" }}>{deal.lastContactDisplay !== "No contact logged" ? deal.lastContactDisplay : "—"}</span>
@@ -627,11 +671,11 @@ function InlineSelect({ value, options, onChange, onClose, placeholder, allowBla
 }
 
 // Multi-select dropdown — toggles options and stores value as "A + B + C".
-function InlineMultiSelect({ value, options, onChange, onClose, placeholder }) {
+function InlineMultiSelect({ value, options, onChange, onClose, placeholder, valueColor = "#b91c1c" }) {
   const ref = useRef(null);
   const searchRef = useRef(null);
   const [query, setQuery] = useState("");
-  const selected = useMemo(() => parseBlockers(value), [value]);
+  const selected = useMemo(() => parseMultiValue(value), [value]);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const menuWidth = 260;
 
@@ -651,7 +695,7 @@ function InlineMultiSelect({ value, options, onChange, onClose, placeholder }) {
 
   const q = query.trim().toLowerCase();
   const filtered = q ? allOptions.filter(o => o.toLowerCase().includes(q)) : allOptions;
-  const summary = formatBlockers(selected) || placeholder || "None logged";
+  const summary = formatMultiValue(selected) || placeholder || "None logged";
 
   useEffect(() => {
     if (allOptions.length > 3) searchRef.current?.focus();
@@ -671,7 +715,7 @@ function InlineMultiSelect({ value, options, onChange, onClose, placeholder }) {
 
   const toggle = (opt) => {
     const next = selectedSet.has(opt) ? selected.filter(x => x !== opt) : [...selected, opt];
-    onChange(formatBlockers(next));
+    onChange(formatMultiValue(next));
   };
 
   const menuStyle = {
@@ -693,7 +737,7 @@ function InlineMultiSelect({ value, options, onChange, onClose, placeholder }) {
 
   return (
     <div ref={ref} style={{ position: "relative", zIndex: 400, display: "inline-block", textAlign: "right" }}>
-      <div style={{ fontSize: 13, color: selected.length ? "#b91c1c" : "#94a3b8", fontWeight: 500, marginBottom: 4, maxWidth: menuWidth }}>
+      <div style={{ fontSize: 13, color: selected.length ? valueColor : "#94a3b8", fontWeight: 500, marginBottom: 4, maxWidth: menuWidth }}>
         {summary}
       </div>
       {allOptions.length > 3 && (
@@ -863,7 +907,7 @@ function DatePickerField({ value, onChange, onClose, display, placeholder, defau
 }
 
 // Editable variant: click the value to edit. Supports dropdown options, plain text, or a custom display renderer.
-function EditableDetailRow({ label, value, options, onChange, accent, placeholder, render, multiSelect, datePicker, displayValue }) {
+function EditableDetailRow({ label, value, options, onChange, accent, placeholder, render, multiSelect, datePicker, displayValue, valueColor }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
   const textValue = cleanDetailValue(value);
@@ -900,6 +944,7 @@ function EditableDetailRow({ label, value, options, onChange, accent, placeholde
         placeholder={placeholder}
         onChange={onChange}
         onClose={() => setEditing(false)}
+        valueColor={valueColor}
       />
     );
   } else if (editing && options) {
@@ -972,7 +1017,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
 
   // Tasks, meetings, contacts live on the deal object so edits persist through onUpdate.
   // Seed tasks with the default follow-up the first time the deal is opened.
-  const tasks = deal.tasks || [{ id: "t0", text: `Follow up with ${(deal.owner || "the lead").split(" ")[0]} on next step`, done: false }];
+  const tasks = deal.tasks || [{ id: "t0", text: `Follow up with ${(parseMultiValue(deal.owner)[0] || "the lead").split(" ")[0]} on next step`, done: false }];
   const meetings = deal.meetings || [];
   const contacts = deal.contacts || [];
 
@@ -988,7 +1033,8 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
   const [contactOpen, setContactOpen] = useState(false);
   const [contactDraft, setContactDraft] = useState({ name: "", email: "", phone: "" });
   const [noteDraft, setNoteDraft] = useState("");
-  const [noteWho, setNoteWho] = useState(deal.owner || "");
+  const [noteWho, setNoteWho] = useState(() => parseMultiValue(deal.owner)[0] || "");
+  const noteOwners = useMemo(() => [...new Set([...parseMultiValue(deal.owner), ...owners.filter(Boolean)])], [deal.owner, owners]);
 
   const groupVenues = useMemo(
     () => allDeals.filter(d => d.group === deal.group).sort((a, b) => STAGES.indexOf(b.stage) - STAGES.indexOf(a.stage)),
@@ -1022,7 +1068,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
         <TierBadge tier={dealTier(deal)} />
         <StatusTag status={isOnboarded(deal) ? "Onboarded" : deal.status} />
         <span style={{ color: "#e2e8f0" }}>|</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Avatar name={deal.owner} size={20} /><span style={{ fontSize: 13, color: "#475569" }}>{deal.owner}</span></span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><OwnerDisplay owner={deal.owner} size={20} /></span>
         <span style={{ color: "#e2e8f0" }}>|</span>
         <span style={{ fontSize: 13, color: "#64748b", display: "inline-flex", alignItems: "center", gap: 6 }}>
           Last contact:
@@ -1049,8 +1095,8 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
             <EditableDetailRow label="Tier" value={dealTier(deal)} options={tiers} onChange={v => set("tier", v)} render={v => <TierBadge tier={v} />} />
             <EditableDetailRow label="Market" value={deal.market} options={markets} onChange={v => set("market", v)} />
             <EditableDetailRow label="Restaurant Group" value={deal.group} options={groups} onChange={v => set("group", v)} />
-            <EditableDetailRow label="Sales Lead" value={deal.owner} options={owners} onChange={v => set("owner", v)}
-              render={v => <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Avatar name={v} size={20} />{v}</span>} />
+            <EditableDetailRow label="Sales Lead" value={deal.owner} options={owners} multiSelect valueColor="#475569" onChange={v => set("owner", v)} placeholder="Unassigned"
+              render={v => <OwnerDisplay owner={v} size={20} />} />
             <EditableDetailRow label="Status" value={deal.status} options={STATUSES} onChange={v => set("status", v)} render={v => <StatusTag status={v} />} />
             <EditableDetailRow label="Blockers" value={deal.blockers} options={BLOCKERS} multiSelect onChange={v => set("blockers", v)} accent={deal.blockers ? "#b91c1c" : null} placeholder="None logged" />
             <EditableDetailRow label="Deal Value" value={deal.dealValue} onChange={v => set("dealValue", v)} placeholder="Add value" render={v => v ? `$${v}` : null} />
@@ -1150,7 +1196,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
                 <span style={{ fontSize: 12, color: "#94a3b8" }}>Logged by</span>
                 <select value={noteWho} onChange={e => setNoteWho(e.target.value)}
                   style={{ fontSize: 12.5, padding: "5px 9px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", cursor: "pointer" }}>
-                  {[deal.owner, ...owners.filter(o => o && o !== deal.owner)].filter(Boolean).map(o => <option key={o}>{o}</option>)}
+                  {noteOwners.map(o => <option key={o}>{o}</option>)}
                 </select>
                 <button disabled={!noteDraft.trim()} onClick={() => { addNote(noteDraft.trim(), noteWho); setNoteDraft(""); }}
                   style={{ marginLeft: "auto", fontSize: 13, fontWeight: 600, padding: "7px 15px", borderRadius: 9, border: "none", background: noteDraft.trim() ? "#6d28d9" : "#e5e7eb", color: "#fff", cursor: noteDraft.trim() ? "pointer" : "default" }}>Post note</button>
@@ -1220,11 +1266,22 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
 }
 
 // ============ DEALS TABLE TAB ============
-function EditableCell({ value, options, onChange, render }) {
+function EditableCell({ value, options, onChange, render, multiSelect, valueColor }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
   useEffect(() => { if (editing && !options && ref.current) ref.current.focus(); }, [editing, options]);
 
+  if (editing && options && multiSelect) {
+    return (
+      <InlineMultiSelect
+        value={value}
+        options={options}
+        onChange={onChange}
+        onClose={() => setEditing(false)}
+        valueColor={valueColor || "#475569"}
+      />
+    );
+  }
   if (editing && options) {
     return (
       <InlineSelect
@@ -1388,8 +1445,8 @@ function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statu
                       : <EditableCell value={d.status} options={STATUSES} onChange={v => onUpdate(d.id, "status", v)} render={v => <StatusTag status={v} />} />}
                   </td>
                   <td style={{ padding: "12px 14px" }} onClick={e => e.stopPropagation()}>
-                    <EditableCell value={d.owner} options={owners} onChange={v => onUpdate(d.id, "owner", v)}
-                      render={v => <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Avatar name={v} size={20} /><span style={{ fontSize: 13, color: "#334155" }}>{v}</span></span>} />
+                    <EditableCell value={d.owner} options={owners} multiSelect valueColor="#475569" onChange={v => onUpdate(d.id, "owner", v)}
+                      render={v => <OwnerDisplay owner={v} size={18} />} />
                   </td>
                   <td style={{ padding: "12px 14px" }} onClick={e => e.stopPropagation()}>
                     <EditableCell value={d.lastContact} onChange={v => onUpdate(d.id, "lastContact", v)}
@@ -1413,7 +1470,9 @@ function ListEditor({ title, field, options, deals, onAdd, onRename, onDelete })
   const [editIdx, setEditIdx] = useState(-1);
   const editRef = useRef(null);
   useEffect(() => { if (editIdx >= 0 && editRef.current) { editRef.current.focus(); editRef.current.select(); } }, [editIdx]);
-  const count = v => deals.filter(d => d[field] === v).length;
+  const count = v => field === "owner"
+    ? deals.filter(d => parseMultiValue(d[field]).includes(v)).length
+    : deals.filter(d => d[field] === v).length;
 
   return (
     <div style={{ flex: 1, minWidth: 240 }}>
@@ -1753,7 +1812,7 @@ export default function App() {
     const clean = (v) => (v == null ? "" : String(v).trim());
     setGroups([...new Set(dealList.map(d => clean(d.group)).filter(Boolean))].sort());
     setMarkets([...new Set(dealList.map(d => clean(d.market)).filter(Boolean))].sort());
-    setOwners([...new Set(dealList.map(d => d.owner).filter(Boolean))].sort());
+    setOwners([...new Set(dealList.flatMap(d => parseMultiValue(d.owner)).filter(Boolean))].sort());
   }, []);
 
   const loadAll = useCallback(async () => {
@@ -1877,7 +1936,7 @@ export default function App() {
       const allRows = [...toAdd, ...toUpdate.map(u => u.row)];
       const newGroups = [...new Set(allRows.map(r => r.group).filter(Boolean))].filter(g => !groups.includes(g));
       const newMarkets = [...new Set(allRows.map(r => r.market).filter(Boolean))].filter(m => !markets.includes(m));
-      const newOwners = [...new Set(allRows.map(r => r.owner).filter(Boolean))].filter(o => !owners.includes(o));
+      const newOwners = [...new Set(allRows.flatMap(r => parseMultiValue(r.owner)).filter(Boolean))].filter(o => !owners.includes(o));
       if (newGroups.length) setGroups(l => [...new Set([...l, ...newGroups])].sort());
       if (newMarkets.length) setMarkets(l => [...new Set([...l, ...newMarkets])].sort());
       if (newOwners.length) setOwners(l => [...new Set([...l, ...newOwners])].sort());
@@ -1897,11 +1956,16 @@ export default function App() {
   const renameOption = async (field, oldV, newV) => {
     const v = newV.trim(); if (!v || v === oldV) return;
     listSetters[field](list => [...new Set(list.map(x => x === oldV ? v : x))].sort());
-    const affected = deals.filter(d => d[field] === oldV);
-    setDeals(ds => ds.map(d => d[field] === oldV ? recompute({ ...d, [field]: v }) : d));
+    const affected = deals.filter(d => dealFieldIncludes(d, field, oldV));
+    setDeals(ds => ds.map(d => dealFieldIncludes(d, field, oldV)
+      ? recompute({ ...d, [field]: field === "owner" ? replaceInMultiValue(d[field], oldV, v) : v })
+      : d));
     if (field === "market") setPriorityMarkets(pm => pm.map(x => x === oldV ? v : x));
     try {
-      for (const d of affected) await updateDealField(d.id, field, v);
+      for (const d of affected) {
+        const newVal = field === "owner" ? replaceInMultiValue(d[field], oldV, v) : v;
+        await updateDealField(d.id, field, newVal);
+      }
       setDbError("");
     } catch (e) {
       persistError(e);
@@ -1910,11 +1974,18 @@ export default function App() {
   };
   const deleteOption = async (field, value) => {
     listSetters[field](list => list.filter(x => x !== value));
-    const affected = deals.filter(d => d[field] === value);
-    setDeals(ds => ds.map(d => d[field] === value ? recompute({ ...d, [field]: "" }) : d));
+    const affected = deals.filter(d => dealFieldIncludes(d, field, value));
+    setDeals(ds => ds.map(d => {
+      if (!dealFieldIncludes(d, field, value)) return d;
+      const newVal = field === "owner" ? removeFromMultiValue(d[field], value) : "";
+      return recompute({ ...d, [field]: newVal });
+    }));
     if (field === "market") setPriorityMarkets(pm => pm.filter(x => x !== value));
     try {
-      for (const d of affected) await updateDealField(d.id, field, "");
+      for (const d of affected) {
+        const newVal = field === "owner" ? removeFromMultiValue(d[field], value) : "";
+        await updateDealField(d.id, field, newVal);
+      }
       setDbError("");
     } catch (e) {
       persistError(e);
