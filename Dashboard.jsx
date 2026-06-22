@@ -70,10 +70,11 @@ const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 function fieldCounts(deals, field) {
   const counts = {};
+  const multi = field === "owner" || field === "blockers";
   for (const d of deals || []) {
     const raw = d[field] == null ? "" : String(d[field]).trim();
     if (!raw) continue;
-    const vals = field === "owner" ? parseMultiValue(raw) : [raw];
+    const vals = multi ? parseMultiValue(raw) : [raw];
     for (const v of vals) counts[v] = (counts[v] || 0) + 1;
   }
   return counts;
@@ -201,19 +202,23 @@ function Avatar({ name, size = 24 }) {
   );
 }
 
-function OwnerDisplay({ owner, size = 20, showNames = true }) {
+function OwnerDisplay({ owner, size = 20, showNames = true, compact = false }) {
   const names = parseMultiValue(owner);
-  if (!names.length) return <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Unassigned</span>;
+  const textStyle = compact
+    ? { fontSize: 13, color: "#64748b" }
+    : { color: "#475569" };
+  const avatarSize = compact ? 14 : size;
+  if (!names.length) return <span style={{ ...textStyle, fontStyle: "italic" }}>Unassigned</span>;
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 7, flexWrap: "wrap", justifyContent: "flex-end" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: compact ? 5 : 7, flexWrap: "wrap", justifyContent: "flex-end" }}>
       <span style={{ display: "inline-flex", alignItems: "center" }}>
         {names.map((n, i) => (
-          <span key={n} style={{ marginLeft: i ? -5 : 0, zIndex: names.length - i, border: "2px solid #fff", borderRadius: 999 }}>
-            <Avatar name={n} size={size} />
+          <span key={n} style={{ marginLeft: i ? (compact ? -4 : -5) : 0, zIndex: names.length - i, border: "2px solid #fff", borderRadius: 999 }}>
+            <Avatar name={n} size={avatarSize} />
           </span>
         ))}
       </span>
-      {showNames && <span style={{ color: "#475569" }}>{formatMultiValue(names)}</span>}
+      {showNames && <span style={textStyle}>{formatMultiValue(names)}</span>}
     </span>
   );
 }
@@ -492,15 +497,16 @@ function PipelineCard({ deal, onClick }) {
   );
 }
 
-function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, tierCountMap, statusCountMap, marketCountMap, ownerCountMap, onFilteredCountChange }) {
+function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, tierCountMap, statusCountMap, marketCountMap, ownerCountMap, blockerCountMap, onFilteredCountChange }) {
   const [fStatus, setFStatus] = useState([]);
   const [fMarket, setFMarket] = useState([]);
   const [fOwner, setFOwner] = useState([]);
   const [fTier, setFTier] = useState([]);
+  const [fBlocker, setFBlocker] = useState([]);
 
   const filtered = useMemo(() => deals.filter(d =>
-    matchesMulti(fStatus, d.status) && matchesMulti(fMarket, d.market) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, dealTier(d))
-  ), [deals, fStatus, fMarket, fOwner, fTier]);
+    matchesMulti(fStatus, d.status) && matchesMulti(fMarket, d.market) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, dealTier(d)) && matchesMulti(fBlocker, d.blockers)
+  ), [deals, fStatus, fMarket, fOwner, fTier, fBlocker]);
 
   useEffect(() => {
     onFilteredCountChange?.(filtered.length);
@@ -513,16 +519,17 @@ function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, tierCountMap, 
   }, [filtered]);
 
   const selStyle = { fontSize: 13, padding: "8px 12px", borderRadius: 9, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", cursor: "pointer" };
-  const active = fStatus.length || fMarket.length || fOwner.length || fTier.length;
+  const active = fStatus.length || fMarket.length || fOwner.length || fTier.length || fBlocker.length;
 
   return (
     <div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <MultiFilter label="All Tiers" options={tiers} selected={fTier} onChange={setFTier} counts={tierCountMap} />
         <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} counts={statusCountMap} />
+        <MultiFilter label="All Reasons" options={BLOCKERS} selected={fBlocker} onChange={setFBlocker} counts={blockerCountMap} />
         <MultiFilter label="All Markets" options={markets.filter(Boolean)} selected={fMarket} onChange={setFMarket} counts={marketCountMap} />
         <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} counts={ownerCountMap} />
-        {active > 0 && <button onClick={() => { setFStatus([]); setFMarket([]); setFOwner([]); setFTier([]); }} style={{ ...selStyle, color: "#7c3aed", fontWeight: 600 }}>Clear filters</button>}
+        {active > 0 && <button onClick={() => { setFStatus([]); setFMarket([]); setFOwner([]); setFTier([]); setFBlocker([]); }} style={{ ...selStyle, color: "#7c3aed", fontWeight: 600 }}>Clear filters</button>}
         <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>{filtered.length} of {deals.length} deals</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${STAGES.length}, minmax(260px, 1fr))`, gap: 16, alignItems: "start" }}>
@@ -1310,12 +1317,13 @@ function EditableCell({ value, options, onChange, render, multiSelect, valueColo
   );
 }
 
-function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statusCountMap, ownerCountMap, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onFilteredCountChange }) {
+function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statusCountMap, ownerCountMap, blockerCountMap, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onFilteredCountChange }) {
   const [search, setSearch] = useState("");
   const [fStage, setFStage] = useState([]);
   const [fStatus, setFStatus] = useState([]);
   const [fOwner, setFOwner] = useState([]);
   const [fTier, setFTier] = useState([]);
+  const [fBlocker, setFBlocker] = useState([]);
   const [sort, setSort] = useState({ key: "venue", dir: 1 });
   const [draft, setDraft] = useState(null); // null = no draft open
 
@@ -1330,13 +1338,13 @@ function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statu
   const filtered = useMemo(() => {
     let r = deals.filter(d =>
       (!search || (d.venue + d.group + d.market).toLowerCase().includes(search.toLowerCase())) &&
-      matchesMulti(fStage, d.stage) && matchesMulti(fStatus, d.status) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, dealTier(d)));
+      matchesMulti(fStage, d.stage) && matchesMulti(fStatus, d.status) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, dealTier(d)) && matchesMulti(fBlocker, d.blockers));
     r = [...r].sort((a, b) => {
       const av = a[sort.key] ?? "", bv = b[sort.key] ?? "";
       return (av > bv ? 1 : av < bv ? -1 : 0) * sort.dir;
     });
     return r;
-  }, [deals, search, fStage, fStatus, fOwner, fTier, sort]);
+  }, [deals, search, fStage, fStatus, fOwner, fTier, fBlocker, sort]);
 
   useEffect(() => {
     onFilteredCountChange?.(filtered.length);
@@ -1349,7 +1357,7 @@ function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statu
     </th>
   );
   const selStyle = { fontSize: 13, padding: "8px 12px", borderRadius: 9, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", cursor: "pointer" };
-  const filtersActive = fStage.length || fStatus.length || fOwner.length || fTier.length;
+  const filtersActive = fStage.length || fStatus.length || fOwner.length || fTier.length || fBlocker.length;
 
   return (
     <div>
@@ -1359,8 +1367,9 @@ function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statu
         <MultiFilter label="All Tiers" options={tiers} selected={fTier} onChange={setFTier} counts={tierCountMap} />
         <MultiFilter label="All Stages" options={STAGES} selected={fStage} onChange={setFStage} />
         <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} counts={statusCountMap} />
+        <MultiFilter label="All Reasons" options={BLOCKERS} selected={fBlocker} onChange={setFBlocker} counts={blockerCountMap} />
         <MultiFilter label="All Leads" options={owners.filter(Boolean)} selected={fOwner} onChange={setFOwner} counts={ownerCountMap} />
-        {filtersActive > 0 && <button onClick={() => { setFStage([]); setFStatus([]); setFOwner([]); setFTier([]); }} style={{ ...selStyle, color: "#7c3aed", fontWeight: 600 }}>Clear filters</button>}
+        {filtersActive > 0 && <button onClick={() => { setFStage([]); setFStatus([]); setFOwner([]); setFTier([]); setFBlocker([]); }} style={{ ...selStyle, color: "#7c3aed", fontWeight: 600 }}>Clear filters</button>}
         <button onClick={onManageLists} style={{ ...selStyle, fontWeight: 600 }}>⚙ Manage lists</button>
         <button onClick={onImport} style={{ ...selStyle, fontWeight: 600 }}>⬆ Import CSV</button>
         <button onClick={startDraft} disabled={!!draft} style={{ ...selStyle, background: draft ? "#ede9fe" : "#6d28d9", color: draft ? "#a78bfa" : "#fff", fontWeight: 600, border: "none", cursor: draft ? "default" : "pointer" }}>+ Add Deal</button>
@@ -1446,8 +1455,8 @@ function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statu
                       : <EditableCell value={d.status} options={STATUSES} onChange={v => onUpdate(d.id, "status", v)} render={v => <StatusTag status={v} />} />}
                   </td>
                   <td style={{ padding: "12px 14px" }} onClick={e => e.stopPropagation()}>
-                    <EditableCell value={d.owner} options={owners} multiSelect valueColor="#475569" onChange={v => onUpdate(d.id, "owner", v)}
-                      render={v => <OwnerDisplay owner={v} size={18} />} />
+                    <EditableCell value={d.owner} options={owners} multiSelect valueColor="#64748b" onChange={v => onUpdate(d.id, "owner", v)}
+                      render={v => <OwnerDisplay owner={v} compact />} />
                   </td>
                   <td style={{ padding: "12px 14px" }} onClick={e => e.stopPropagation()}>
                     <EditableCell value={d.lastContact} onChange={v => onUpdate(d.id, "lastContact", v)}
@@ -1868,6 +1877,7 @@ export default function App() {
   const statusCountMap = useMemo(() => statusCounts(deals), [deals]);
   const marketCountMap = useMemo(() => fieldCounts(deals, "market"), [deals]);
   const ownerCountMap = useMemo(() => fieldCounts(deals, "owner"), [deals]);
+  const blockerCountMap = useMemo(() => fieldCounts(deals, "blockers"), [deals]);
 
   const persistError = (e) => setDbError(e?.message || "Save failed. Your change may not have been stored.");
 
@@ -2114,8 +2124,8 @@ export default function App() {
             )}
 
             {tab === "dashboard" && <DashboardTab deals={deals} insights={insights} tasks={tasks} onOpenDeal={goDeal} priorityMarkets={priorityMarkets} />}
-            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} owners={owners} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} onFilteredCountChange={reportFilteredCount} />}
-            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} ownerCountMap={ownerCountMap} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} />}
+            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} owners={owners} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onFilteredCountChange={reportFilteredCount} />}
+            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} />}
             {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={() => setTab("pipeline")} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} tiers={tiers} />}
           </>
         )}
