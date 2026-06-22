@@ -25,6 +25,16 @@ const isOnboarded = d => d.stage === "Onboarded";
 const STATUSES = ["Progressing", "Stuck", "Not a priority"];
 const BLOCKERS = ["Price", "Control", "Unresponsive", "Brand", "Logistics", "No need", "Fees", "Min Spend"];
 
+function parseBlockers(value) {
+  const s = value == null ? "" : String(value).trim();
+  if (!s) return [];
+  return s.split(/\s+\+\s+/).map(x => x.trim()).filter(Boolean);
+}
+
+function formatBlockers(list) {
+  return list.filter(Boolean).join(" + ");
+}
+
 function fieldCounts(deals, field) {
   const counts = {};
   for (const d of deals || []) {
@@ -602,8 +612,103 @@ function InlineSelect({ value, options, onChange, onClose, placeholder, allowBla
   );
 }
 
+// Multi-select dropdown — toggles options and stores value as "A + B + C".
+function InlineMultiSelect({ value, options, onChange, onClose, placeholder }) {
+  const ref = useRef(null);
+  const searchRef = useRef(null);
+  const [query, setQuery] = useState("");
+  const selected = useMemo(() => parseBlockers(value), [value]);
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const menuWidth = 260;
+
+  const allOptions = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    const add = (v) => {
+      const s = cleanDetailValue(v);
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      list.push(s);
+    };
+    for (const o of options || []) add(o);
+    for (const s of selected) add(s);
+    return list;
+  }, [options, selected]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q ? allOptions.filter(o => o.toLowerCase().includes(q)) : allOptions;
+  const summary = formatBlockers(selected) || placeholder || "None logged";
+
+  useEffect(() => {
+    if (allOptions.length > 3) searchRef.current?.focus();
+  }, [allOptions.length]);
+
+  useEffect(() => {
+    const close = (e) => { if (!ref.current?.contains(e.target)) onClose?.(); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [onClose]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const toggle = (opt) => {
+    const next = selectedSet.has(opt) ? selected.filter(x => x !== opt) : [...selected, opt];
+    onChange(formatBlockers(next));
+  };
+
+  const menuStyle = {
+    position: "absolute", top: "100%", right: 0, marginTop: 4, zIndex: 400,
+    width: menuWidth, background: "#ffffff", border: "1px solid #e5e7eb",
+    borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: "4px 0",
+    maxHeight: 260, overflowY: "auto",
+  };
+  const itemStyle = (active) => ({
+    display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left",
+    padding: "8px 12px", cursor: "pointer", fontSize: 13,
+    color: "#334155", background: active ? "#faf5ff" : "#ffffff",
+    fontWeight: active ? 600 : 400, fontFamily: "inherit", lineHeight: 1.4,
+  });
+  const inputStyle = {
+    width: menuWidth, fontSize: 13, padding: "6px 10px", marginBottom: 4,
+    borderRadius: 7, border: "1.5px solid #a78bfa", color: "#0f172a", background: "#ffffff",
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative", zIndex: 400, display: "inline-block", textAlign: "right" }}>
+      <div style={{ fontSize: 13, color: selected.length ? "#b91c1c" : "#94a3b8", fontWeight: 500, marginBottom: 4, maxWidth: menuWidth }}>
+        {summary}
+      </div>
+      {allOptions.length > 3 && (
+        <input
+          ref={searchRef}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search blockers…"
+          onKeyDown={e => { if (e.key === "Escape") onClose?.(); }}
+          style={inputStyle}
+        />
+      )}
+      <div style={menuStyle}>
+        {filtered.map(o => (
+          <label key={o} style={itemStyle(selectedSet.has(o))}>
+            <input type="checkbox" checked={selectedSet.has(o)} onChange={() => toggle(o)} />
+            <span style={{ color: "#334155", flex: 1 }}>{o}</span>
+          </label>
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8", background: "#ffffff" }}>No matches</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Editable variant: click the value to edit. Supports dropdown options, plain text, or a custom display renderer.
-function EditableDetailRow({ label, value, options, onChange, accent, placeholder, render }) {
+function EditableDetailRow({ label, value, options, onChange, accent, placeholder, render, multiSelect }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
   const textValue = cleanDetailValue(value);
@@ -620,7 +725,17 @@ function EditableDetailRow({ label, value, options, onChange, accent, placeholde
   };
 
   let body;
-  if (editing && options) {
+  if (editing && options && multiSelect) {
+    body = (
+      <InlineMultiSelect
+        value={value}
+        options={options}
+        placeholder={placeholder}
+        onChange={onChange}
+        onClose={() => setEditing(false)}
+      />
+    );
+  } else if (editing && options) {
     const allowBlank = (options || []).some(o => cleanDetailValue(o) === "");
     body = (
       <InlineSelect
@@ -758,7 +873,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
             <EditableDetailRow label="Sales Lead" value={deal.owner} options={owners} onChange={v => set("owner", v)}
               render={v => <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Avatar name={v} size={20} />{v}</span>} />
             <EditableDetailRow label="Status" value={deal.status} options={STATUSES} onChange={v => set("status", v)} render={v => <StatusTag status={v} />} />
-            <EditableDetailRow label="Blockers" value={deal.blockers} options={["", ...BLOCKERS]} onChange={v => set("blockers", v)} accent={deal.blockers ? "#b91c1c" : null} placeholder="None logged" />
+            <EditableDetailRow label="Blockers" value={deal.blockers} options={BLOCKERS} multiSelect onChange={v => set("blockers", v)} accent={deal.blockers ? "#b91c1c" : null} placeholder="None logged" />
             <EditableDetailRow label="Deal Value" value={deal.dealValue} onChange={v => set("dealValue", v)} placeholder="Add value" render={v => v ? `$${v}` : null} />
             <EditableDetailRow label="Year 1 ARR Potential" value={deal.year1ARR} onChange={v => set("year1ARR", v)} placeholder="Add amount" render={v => v ? `$${v}` : null} />
             <EditableDetailRow label="Billing Frequency" value={deal.billing} options={["", "Monthly", "Quarterly", "Annual"]} onChange={v => set("billing", v)} placeholder="Set frequency" />
@@ -1336,7 +1451,7 @@ function buildInsights(allDeals) {
   const out = [];
   const aPlusStuck = deals.filter(d => d.tier === "A+" && d.status === "Stuck");
   if (aPlusStuck.length) out.push({ tone: "#ef4444", title: `${aPlusStuck.length} A+ deals are stuck`, body: `Your highest-tier venues are blocked. Leading blockers: ${[...new Set(aPlusStuck.map(d => d.blockers).filter(Boolean))].slice(0, 3).join(", ") || "unspecified"}. These need senior intervention.`, deals: aPlusStuck.slice(0, 5) });
-  const moneyBlocked = deals.filter(d => /money/i.test(d.blockers));
+  const moneyBlocked = deals.filter(d => /money|price|fees|min spend/i.test(d.blockers || ""));
   if (moneyBlocked.length) out.push({ tone: "#f59e0b", title: `${moneyBlocked.length} deals blocked on economics`, body: `Money is the single most common blocker in the pipeline. Consider a standardized counter-offer framework to unblock these in bulk.`, deals: moneyBlocked.slice(0, 5) });
   const controlBlocked = deals.filter(d => /control/i.test(d.blockers));
   if (controlBlocked.length) out.push({ tone: "#8b5cf6", title: `${controlBlocked.length} deals citing control concerns`, body: `Partners want full control over their venue and membership model. A lighter-touch integration tier may convert these.`, deals: controlBlocked.slice(0, 4) });
