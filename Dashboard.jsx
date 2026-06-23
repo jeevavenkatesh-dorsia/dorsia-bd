@@ -509,17 +509,39 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
         />
       </div>
 
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginTop: 10 }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <EditableCell
             value={deal.owner}
             options={owners}
             multiSelect
             valueColor="#64748b"
             onChange={v => set("owner", v)}
-            render={v => <OwnerDisplay owner={v} compact />}
+            render={v => {
+              const names = parseMultiValue(v);
+              if (!names.length) {
+                return (
+                  <span style={{ display: "inline-flex", alignItems: "center" }} title="Unassigned — click to set">
+                    <span style={{
+                      width: 20, height: 20, borderRadius: 999, background: "#e2e8f0",
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 10, color: "#94a3b8", fontWeight: 600,
+                    }}>—</span>
+                  </span>
+                );
+              }
+              return (
+                <span style={{ display: "inline-flex", alignItems: "center" }} title={formatMultiValue(names)}>
+                  {names.slice(0, 2).map((n, i) => (
+                    <span key={n} style={{ marginLeft: i ? -4 : 0, zIndex: names.length - i, border: "2px solid #fff", borderRadius: 999 }}>
+                      <Avatar name={n} size={20} />
+                    </span>
+                  ))}
+                </span>
+              );
+            }}
           />
-          {deal.market && <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{deal.market}</div>}
+          {deal.market && <span style={{ fontSize: 11, color: "#64748b" }}>{deal.market}</span>}
         </div>
         <EditableCell
           value={deal.lastContact}
