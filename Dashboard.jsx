@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { supabase, supabaseConfigured } from "./src/lib/supabase.js";
 import LoginScreen from "./src/components/LoginScreen.jsx";
 import BrandWordmark from "./src/components/BrandWordmark.jsx";
@@ -461,16 +461,35 @@ function DashboardTab({ deals, insights, tasks, onOpenDeal, priorityMarkets }) {
   );
 }
 
+function useFitColumnBox(boundsRef, innerRef) {
+  const [box, setBox] = useState(null);
+  const measure = useCallback(() => {
+    if (!boundsRef?.current || !innerRef?.current) return;
+    const outer = boundsRef.current.getBoundingClientRect();
+    const inner = innerRef.current.getBoundingClientRect();
+    setBox({ left: outer.left - inner.left, width: outer.width });
+  }, [boundsRef, innerRef]);
+
+  useLayoutEffect(() => { measure(); }, [measure]);
+  useEffect(() => {
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [measure]);
+
+  return box;
+}
+
 // ============ PIPELINE TAB ============
 function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
+  const cardRef = useRef(null);
   const stale = isOnboarded(deal) ? null : staleLabel(deal.staleDays);
   const blockers = parseMultiValue(deal.blockers);
   const set = (key, val) => onUpdate(deal.id, key, val);
 
   return (
-    <div style={{
+    <div ref={cardRef} style={{
       width: "100%", textAlign: "left", background: "#fff", border: "1px solid #eef0f4",
-      borderRadius: 12, padding: 13, display: "block",
+      borderRadius: 12, padding: 13, display: "block", position: "relative",
       transition: "border-color .15s, box-shadow .15s",
     }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = "#d8b4fe"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(124,58,237,.08)"; }}
@@ -488,7 +507,7 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
       </div>
 
       <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-        <EditableCell value={deal.stage} options={STAGES} onChange={v => set("stage", v)}
+        <EditableCell fitColumn boundsRef={cardRef} value={deal.stage} options={STAGES} onChange={v => set("stage", v)}
           render={v => (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "#334155", fontWeight: 500 }}>
               <span style={{ width: 7, height: 7, borderRadius: 999, background: STAGE_DOT[v] }} />{v}
@@ -496,12 +515,15 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
           )} />
         {isOnboarded(deal)
           ? <StatusTag status="Onboarded" />
-          : <EditableCell value={deal.status} options={STATUSES} onChange={v => set("status", v)} render={v => <StatusTag status={v} />} />}
+          : <EditableCell fitColumn boundsRef={cardRef} value={deal.status} options={STATUSES} onChange={v => set("status", v)} render={v => <StatusTag status={v} />} />}
         <EditableCell
+          fitColumn
+          boundsRef={cardRef}
           value={deal.blockers}
           options={BLOCKERS}
           multiSelect
           valueColor="#b91c1c"
+          searchPlaceholder="Search blockers…"
           onChange={v => set("blockers", v)}
           render={() => blockers.length
             ? <span style={{ fontSize: 11, color: "#b91c1c", lineHeight: 1.35 }}>{formatMultiValue(blockers)}</span>
@@ -512,6 +534,10 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <EditableCell
+            fitColumn
+            boundsRef={cardRef}
+            hideSummary
+            searchPlaceholder="Search leads…"
             value={deal.owner}
             options={owners}
             multiSelect
@@ -544,6 +570,8 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
           {deal.market && <span style={{ fontSize: 11, color: "#64748b" }}>{deal.market}</span>}
         </div>
         <EditableCell
+          fitColumn
+          boundsRef={cardRef}
           value={deal.lastContact}
           datePicker
           displayValue={deal.lastContactDisplay}
@@ -603,7 +631,7 @@ function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tier
         {STAGES.map(stage => {
           const onboardedCol = stage === "Onboarded";
           return (
-          <div key={stage} style={{ background: onboardedCol ? "#f5f3ff" : "#f8f7fb", border: `1px solid ${onboardedCol ? "#ddd6fe" : "#f0eef6"}`, borderRadius: 14, padding: 12, minHeight: 200 }}>
+          <div key={stage} style={{ background: onboardedCol ? "#f5f3ff" : "#f8f7fb", border: `1px solid ${onboardedCol ? "#ddd6fe" : "#f0eef6"}`, borderRadius: 14, padding: 12, minHeight: 200, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, padding: "2px 4px" }}>
               <span style={{ width: 9, height: 9, borderRadius: 999, background: STAGE_DOT[stage] }} />
               <span style={{ fontSize: 13.5, fontWeight: 700, color: onboardedCol ? "#6d28d9" : "#0f172a" }}>{stage}</span>
@@ -665,20 +693,23 @@ function normalizeSelectOptions(options, currentValue) {
 }
 
 // Custom single-select dropdown — inline styles only (same pattern as MultiFilter).
-function InlineSelect({ value, options, onChange, onClose, placeholder, allowBlank, compact }) {
+function InlineSelect({ value, options, onChange, onClose, placeholder, allowBlank, compact, fitColumn, boundsRef }) {
   const [query, setQuery] = useState("");
   const ref = useRef(null);
   const searchRef = useRef(null);
+  const fitBox = useFitColumnBox(boundsRef, ref);
   const selectOptions = normalizeSelectOptions(options, value);
   const showSearch = selectOptions.length > 3;
   const current = cleanDetailValue(value);
   const q = query.trim().toLowerCase();
   const filtered = q ? selectOptions.filter(o => o.toLowerCase().includes(q)) : selectOptions;
-  const menuWidth = compact ? 220 : 260;
+  const defaultMenuWidth = compact ? 220 : 260;
+  const menuWidth = fitColumn && fitBox ? fitBox.width : defaultMenuWidth;
 
   const menuStyle = {
-    position: "absolute", top: "100%", right: 0, marginTop: 4, zIndex: 400,
-    width: menuWidth, background: "#ffffff", border: "1px solid #e5e7eb",
+    position: "absolute", top: "100%", marginTop: 4, zIndex: 400,
+    ...(fitColumn && fitBox ? { left: fitBox.left, width: fitBox.width } : { right: 0, width: defaultMenuWidth }),
+    background: "#ffffff", border: "1px solid #e5e7eb",
     borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: "4px 0",
     maxHeight: 260, overflowY: "auto",
   };
@@ -746,13 +777,15 @@ function InlineSelect({ value, options, onChange, onClose, placeholder, allowBla
 }
 
 // Multi-select dropdown — toggles options and stores value as "A + B + C".
-function InlineMultiSelect({ value, options, onChange, onClose, placeholder, valueColor = "#b91c1c" }) {
+function InlineMultiSelect({ value, options, onChange, onClose, placeholder, valueColor = "#b91c1c", fitColumn, boundsRef, hideSummary, searchPlaceholder }) {
   const ref = useRef(null);
   const searchRef = useRef(null);
+  const fitBox = useFitColumnBox(boundsRef, ref);
   const [query, setQuery] = useState("");
   const selected = useMemo(() => parseMultiValue(value), [value]);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
-  const menuWidth = 260;
+  const defaultMenuWidth = 260;
+  const menuWidth = fitColumn && fitBox ? fitBox.width : defaultMenuWidth;
 
   const allOptions = useMemo(() => {
     const seen = new Set();
@@ -794,8 +827,9 @@ function InlineMultiSelect({ value, options, onChange, onClose, placeholder, val
   };
 
   const menuStyle = {
-    position: "absolute", top: "100%", right: 0, marginTop: 4, zIndex: 400,
-    width: menuWidth, background: "#ffffff", border: "1px solid #e5e7eb",
+    position: "absolute", top: "100%", marginTop: 4, zIndex: 400,
+    ...(fitColumn && fitBox ? { left: fitBox.left, width: fitBox.width } : { right: 0, width: defaultMenuWidth }),
+    background: "#ffffff", border: "1px solid #e5e7eb",
     borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: "4px 0",
     maxHeight: 260, overflowY: "auto",
   };
@@ -812,15 +846,17 @@ function InlineMultiSelect({ value, options, onChange, onClose, placeholder, val
 
   return (
     <div ref={ref} style={{ position: "relative", zIndex: 400, display: "inline-block", textAlign: "right" }}>
-      <div style={{ fontSize: 13, color: selected.length ? valueColor : "#94a3b8", fontWeight: 500, marginBottom: 4, maxWidth: menuWidth }}>
-        {summary}
-      </div>
+      {!hideSummary && (
+        <div style={{ fontSize: 13, color: selected.length ? valueColor : "#94a3b8", fontWeight: 500, marginBottom: 4, maxWidth: menuWidth }}>
+          {summary}
+        </div>
+      )}
       {allOptions.length > 3 && (
         <input
           ref={searchRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search blockers…"
+          placeholder={searchPlaceholder || "Search blockers…"}
           onKeyDown={e => { if (e.key === "Escape") onClose?.(); }}
           style={inputStyle}
         />
@@ -840,8 +876,9 @@ function InlineMultiSelect({ value, options, onChange, onClose, placeholder, val
   );
 }
 
-function DatePickerField({ value, onChange, onClose, display, placeholder, defaultOpen, align = "right", triggerStyle, hidePencil }) {
+function DatePickerField({ value, onChange, onClose, display, placeholder, defaultOpen, align = "right", triggerStyle, hidePencil, fitColumn, boundsRef }) {
   const ref = useRef(null);
+  const fitBox = useFitColumnBox(boundsRef, ref);
   const [open, setOpen] = useState(!!defaultOpen);
   const selected = parseIsoDate(value);
   const [view, setView] = useState(() => {
@@ -895,9 +932,10 @@ function DatePickerField({ value, onChange, onClose, display, placeholder, defau
   const popoverStyle = {
     position: "absolute",
     top: "calc(100% + 6px)",
-    ...(align === "right" ? { right: 0 } : { left: 0 }),
     zIndex: 500,
-    width: 280,
+    ...(fitColumn && fitBox
+      ? { left: fitBox.left, width: fitBox.width }
+      : align === "right" ? { right: 0, width: 280 } : { left: 0, width: 280 }),
     background: "#ffffff",
     border: "1px solid #e5e7eb",
     borderRadius: 14,
@@ -1341,7 +1379,7 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
 }
 
 // ============ DEALS TABLE TAB ============
-function EditableCell({ value, options, onChange, render, multiSelect, valueColor, datePicker, displayValue }) {
+function EditableCell({ value, options, onChange, render, multiSelect, valueColor, datePicker, displayValue, fitColumn, boundsRef, hideSummary, searchPlaceholder }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
   useEffect(() => { if (editing && !options && !datePicker && ref.current) ref.current.focus(); }, [editing, options, datePicker]);
@@ -1356,6 +1394,8 @@ function EditableCell({ value, options, onChange, render, multiSelect, valueColo
         defaultOpen
         align="right"
         hidePencil
+        fitColumn={fitColumn}
+        boundsRef={boundsRef}
         triggerStyle={{ fontSize: 11, fontWeight: 500, color: "#64748b" }}
       />
     );
@@ -1368,6 +1408,10 @@ function EditableCell({ value, options, onChange, render, multiSelect, valueColo
         onChange={onChange}
         onClose={() => setEditing(false)}
         valueColor={valueColor || "#475569"}
+        fitColumn={fitColumn}
+        boundsRef={boundsRef}
+        hideSummary={hideSummary}
+        searchPlaceholder={searchPlaceholder}
       />
     );
   }
@@ -1379,6 +1423,8 @@ function EditableCell({ value, options, onChange, render, multiSelect, valueColo
         onChange={onChange}
         onClose={() => setEditing(false)}
         compact
+        fitColumn={fitColumn}
+        boundsRef={boundsRef}
       />
     );
   }
