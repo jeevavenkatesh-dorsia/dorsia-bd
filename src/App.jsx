@@ -719,8 +719,12 @@ function InlineSelect({ value, options, onChange, onClose, placeholder, allowBla
     fontWeight: active ? 600 : 400, fontFamily: "inherit", lineHeight: 1.4,
   });
   const inputStyle = {
-    width: menuWidth, fontSize: compact ? 12.5 : 13, padding: compact ? "5px 8px" : "6px 10px",
+    fontSize: compact ? 12.5 : 13, padding: compact ? "5px 8px" : "6px 10px",
     borderRadius: 7, border: "1.5px solid #a78bfa", color: "#0f172a", background: "#ffffff",
+    boxSizing: "border-box",
+    ...(fitColumn && fitBox
+      ? { display: "block", position: "relative", left: fitBox.left, width: fitBox.width, maxWidth: fitBox.width }
+      : { width: menuWidth }),
   };
 
   useEffect(() => {
@@ -840,8 +844,12 @@ function InlineMultiSelect({ value, options, onChange, onClose, placeholder, val
     fontWeight: active ? 600 : 400, fontFamily: "inherit", lineHeight: 1.4,
   });
   const inputStyle = {
-    width: menuWidth, fontSize: 13, padding: "6px 10px", marginBottom: 4,
+    fontSize: 13, padding: "6px 10px", marginBottom: 4,
     borderRadius: 7, border: "1.5px solid #a78bfa", color: "#0f172a", background: "#ffffff",
+    boxSizing: "border-box",
+    ...(fitColumn && fitBox
+      ? { display: "block", position: "relative", left: fitBox.left, width: fitBox.width, maxWidth: fitBox.width }
+      : { width: menuWidth }),
   };
 
   return (
