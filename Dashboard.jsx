@@ -470,7 +470,7 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
   return (
     <div style={{
       width: "100%", textAlign: "left", background: "#fff", border: "1px solid #eef0f4",
-      borderRadius: 12, padding: 13, display: "block",
+      borderRadius: 12, padding: 13, display: "block", position: "relative",
       transition: "border-color .15s, box-shadow .15s",
     }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = "#d8b4fe"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(124,58,237,.08)"; }}
@@ -488,7 +488,7 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
       </div>
 
       <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-        <EditableCell value={deal.stage} options={STAGES} onChange={v => set("stage", v)}
+        <EditableCell contained value={deal.stage} options={STAGES} onChange={v => set("stage", v)}
           render={v => (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "#334155", fontWeight: 500 }}>
               <span style={{ width: 7, height: 7, borderRadius: 999, background: STAGE_DOT[v] }} />{v}
@@ -496,12 +496,14 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
           )} />
         {isOnboarded(deal)
           ? <StatusTag status="Onboarded" />
-          : <EditableCell value={deal.status} options={STATUSES} onChange={v => set("status", v)} render={v => <StatusTag status={v} />} />}
+          : <EditableCell contained value={deal.status} options={STATUSES} onChange={v => set("status", v)} render={v => <StatusTag status={v} />} />}
         <EditableCell
+          contained
           value={deal.blockers}
           options={BLOCKERS}
           multiSelect
           valueColor="#b91c1c"
+          searchPlaceholder="Search blockers…"
           onChange={v => set("blockers", v)}
           render={() => blockers.length
             ? <span style={{ fontSize: 11, color: "#b91c1c", lineHeight: 1.35 }}>{formatMultiValue(blockers)}</span>
@@ -512,6 +514,9 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <EditableCell
+            contained
+            hideSummary
+            searchPlaceholder="Search leads…"
             value={deal.owner}
             options={owners}
             multiSelect
@@ -544,6 +549,7 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
           {deal.market && <span style={{ fontSize: 11, color: "#64748b" }}>{deal.market}</span>}
         </div>
         <EditableCell
+          contained
           value={deal.lastContact}
           datePicker
           displayValue={deal.lastContactDisplay}
@@ -603,7 +609,7 @@ function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tier
         {STAGES.map(stage => {
           const onboardedCol = stage === "Onboarded";
           return (
-          <div key={stage} style={{ background: onboardedCol ? "#f5f3ff" : "#f8f7fb", border: `1px solid ${onboardedCol ? "#ddd6fe" : "#f0eef6"}`, borderRadius: 14, padding: 12, minHeight: 200 }}>
+          <div key={stage} style={{ background: onboardedCol ? "#f5f3ff" : "#f8f7fb", border: `1px solid ${onboardedCol ? "#ddd6fe" : "#f0eef6"}`, borderRadius: 14, padding: 12, minHeight: 200, minWidth: 0, overflow: "visible" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, padding: "2px 4px" }}>
               <span style={{ width: 9, height: 9, borderRadius: 999, background: STAGE_DOT[stage] }} />
               <span style={{ fontSize: 13.5, fontWeight: 700, color: onboardedCol ? "#6d28d9" : "#0f172a" }}>{stage}</span>
@@ -665,7 +671,7 @@ function normalizeSelectOptions(options, currentValue) {
 }
 
 // Custom single-select dropdown — inline styles only (same pattern as MultiFilter).
-function InlineSelect({ value, options, onChange, onClose, placeholder, allowBlank, compact }) {
+function InlineSelect({ value, options, onChange, onClose, placeholder, allowBlank, compact, contained }) {
   const [query, setQuery] = useState("");
   const ref = useRef(null);
   const searchRef = useRef(null);
@@ -674,9 +680,14 @@ function InlineSelect({ value, options, onChange, onClose, placeholder, allowBla
   const current = cleanDetailValue(value);
   const q = query.trim().toLowerCase();
   const filtered = q ? selectOptions.filter(o => o.toLowerCase().includes(q)) : selectOptions;
-  const menuWidth = compact ? 220 : 260;
+  const menuWidth = contained ? "100%" : (compact ? 220 : 260);
 
-  const menuStyle = {
+  const menuStyle = contained ? {
+    position: "relative", marginTop: 4, zIndex: 400,
+    width: "100%", background: "#ffffff", border: "1px solid #e5e7eb",
+    borderRadius: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.08)", padding: "4px 0",
+    maxHeight: 200, overflowY: "auto", boxSizing: "border-box",
+  } : {
     position: "absolute", top: "100%", right: 0, marginTop: 4, zIndex: 400,
     width: menuWidth, background: "#ffffff", border: "1px solid #e5e7eb",
     borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: "4px 0",
@@ -688,7 +699,7 @@ function InlineSelect({ value, options, onChange, onClose, placeholder, allowBla
     fontWeight: active ? 600 : 400, fontFamily: "inherit", lineHeight: 1.4,
   });
   const inputStyle = {
-    width: menuWidth, fontSize: compact ? 12.5 : 13, padding: compact ? "5px 8px" : "6px 10px",
+    width: menuWidth, boxSizing: "border-box", fontSize: compact ? 12.5 : 13, padding: compact ? "5px 8px" : "6px 10px",
     borderRadius: 7, border: "1.5px solid #a78bfa", color: "#0f172a", background: "#ffffff",
   };
 
@@ -711,7 +722,7 @@ function InlineSelect({ value, options, onChange, onClose, placeholder, allowBla
   const pick = (v) => { onChange(v); onClose?.(); };
 
   return (
-    <div ref={ref} style={{ position: "relative", zIndex: 400, display: "inline-block" }}>
+    <div ref={ref} style={{ position: "relative", zIndex: 400, display: contained ? "block" : "inline-block", width: contained ? "100%" : undefined, maxWidth: contained ? "100%" : undefined, boxSizing: "border-box" }}>
       {showSearch ? (
         <input
           ref={searchRef}
@@ -746,13 +757,13 @@ function InlineSelect({ value, options, onChange, onClose, placeholder, allowBla
 }
 
 // Multi-select dropdown — toggles options and stores value as "A + B + C".
-function InlineMultiSelect({ value, options, onChange, onClose, placeholder, valueColor = "#b91c1c" }) {
+function InlineMultiSelect({ value, options, onChange, onClose, placeholder, valueColor = "#b91c1c", contained, hideSummary, searchPlaceholder }) {
   const ref = useRef(null);
   const searchRef = useRef(null);
   const [query, setQuery] = useState("");
   const selected = useMemo(() => parseMultiValue(value), [value]);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
-  const menuWidth = 260;
+  const menuWidth = contained ? "100%" : 260;
 
   const allOptions = useMemo(() => {
     const seen = new Set();
@@ -793,7 +804,12 @@ function InlineMultiSelect({ value, options, onChange, onClose, placeholder, val
     onChange(formatMultiValue(next));
   };
 
-  const menuStyle = {
+  const menuStyle = contained ? {
+    position: "relative", marginTop: 4, zIndex: 400,
+    width: "100%", background: "#ffffff", border: "1px solid #e5e7eb",
+    borderRadius: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.08)", padding: "4px 0",
+    maxHeight: 200, overflowY: "auto", boxSizing: "border-box",
+  } : {
     position: "absolute", top: "100%", right: 0, marginTop: 4, zIndex: 400,
     width: menuWidth, background: "#ffffff", border: "1px solid #e5e7eb",
     borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: "4px 0",
@@ -806,21 +822,23 @@ function InlineMultiSelect({ value, options, onChange, onClose, placeholder, val
     fontWeight: active ? 600 : 400, fontFamily: "inherit", lineHeight: 1.4,
   });
   const inputStyle = {
-    width: menuWidth, fontSize: 13, padding: "6px 10px", marginBottom: 4,
+    width: menuWidth, boxSizing: "border-box", fontSize: 13, padding: "6px 10px", marginBottom: 4,
     borderRadius: 7, border: "1.5px solid #a78bfa", color: "#0f172a", background: "#ffffff",
   };
 
   return (
-    <div ref={ref} style={{ position: "relative", zIndex: 400, display: "inline-block", textAlign: "right" }}>
-      <div style={{ fontSize: 13, color: selected.length ? valueColor : "#94a3b8", fontWeight: 500, marginBottom: 4, maxWidth: menuWidth }}>
-        {summary}
-      </div>
+    <div ref={ref} style={{ position: "relative", zIndex: 400, display: contained ? "block" : "inline-block", width: contained ? "100%" : undefined, maxWidth: contained ? "100%" : undefined, boxSizing: "border-box", textAlign: contained ? "left" : "right" }}>
+      {!hideSummary && (
+        <div style={{ fontSize: 13, color: selected.length ? valueColor : "#94a3b8", fontWeight: 500, marginBottom: 4, maxWidth: contained ? "100%" : menuWidth, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {summary}
+        </div>
+      )}
       {allOptions.length > 3 && (
         <input
           ref={searchRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search blockers…"
+          placeholder={searchPlaceholder || "Search blockers…"}
           onKeyDown={e => { if (e.key === "Escape") onClose?.(); }}
           style={inputStyle}
         />
@@ -840,7 +858,7 @@ function InlineMultiSelect({ value, options, onChange, onClose, placeholder, val
   );
 }
 
-function DatePickerField({ value, onChange, onClose, display, placeholder, defaultOpen, align = "right", triggerStyle, hidePencil }) {
+function DatePickerField({ value, onChange, onClose, display, placeholder, defaultOpen, align = "right", triggerStyle, hidePencil, contained }) {
   const ref = useRef(null);
   const [open, setOpen] = useState(!!defaultOpen);
   const selected = parseIsoDate(value);
@@ -895,9 +913,11 @@ function DatePickerField({ value, onChange, onClose, display, placeholder, defau
   const popoverStyle = {
     position: "absolute",
     top: "calc(100% + 6px)",
-    ...(align === "right" ? { right: 0 } : { left: 0 }),
+    ...(contained ? { left: 0, right: 0 } : align === "right" ? { right: 0 } : { left: 0 }),
     zIndex: 500,
-    width: 280,
+    width: contained ? "100%" : 280,
+    maxWidth: contained ? "100%" : undefined,
+    boxSizing: "border-box",
     background: "#ffffff",
     border: "1px solid #e5e7eb",
     borderRadius: 14,
@@ -906,7 +926,7 @@ function DatePickerField({ value, onChange, onClose, display, placeholder, defau
   };
 
   return (
-    <span ref={ref} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+    <span ref={ref} style={{ position: "relative", display: contained ? "block" : "inline-flex", alignItems: "center", width: contained ? "100%" : undefined, maxWidth: contained ? "100%" : undefined }}>
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
@@ -1341,44 +1361,59 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
 }
 
 // ============ DEALS TABLE TAB ============
-function EditableCell({ value, options, onChange, render, multiSelect, valueColor, datePicker, displayValue }) {
+function EditableCell({ value, options, onChange, render, multiSelect, valueColor, datePicker, displayValue, contained, searchPlaceholder, hideSummary }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
   useEffect(() => { if (editing && !options && !datePicker && ref.current) ref.current.focus(); }, [editing, options, datePicker]);
 
+  const containedWrap = (child) => contained ? (
+    <div style={{
+      position: "absolute", left: 0, right: 0, top: 0, zIndex: 60,
+      padding: 10, background: "#fff", border: "1px solid #c4b5fd", borderRadius: 10,
+      boxShadow: "0 6px 20px rgba(0,0,0,.1)", boxSizing: "border-box",
+    }}>
+      {child}
+    </div>
+  ) : child;
+
   if (editing && datePicker) {
-    return (
+    return containedWrap(
       <DatePickerField
         value={value}
         display={displayValue}
         onChange={onChange}
         onClose={() => setEditing(false)}
         defaultOpen
-        align="right"
+        align={contained ? "left" : "right"}
+        contained={contained}
         hidePencil
         triggerStyle={{ fontSize: 11, fontWeight: 500, color: "#64748b" }}
       />
     );
   }
   if (editing && options && multiSelect) {
-    return (
+    return containedWrap(
       <InlineMultiSelect
         value={value}
         options={options}
         onChange={onChange}
         onClose={() => setEditing(false)}
         valueColor={valueColor || "#475569"}
+        contained={contained}
+        hideSummary={hideSummary}
+        searchPlaceholder={searchPlaceholder}
       />
     );
   }
   if (editing && options) {
-    return (
+    return containedWrap(
       <InlineSelect
         value={value}
         options={options}
         onChange={onChange}
         onClose={() => setEditing(false)}
         compact
+        contained={contained}
       />
     );
   }
