@@ -462,25 +462,54 @@ function DashboardTab({ deals, insights, tasks, onOpenDeal, priorityMarkets }) {
 }
 
 // ============ PIPELINE TAB ============
-function PipelineCard({ deal, onClick }) {
+function PipelineCard({ deal, onUpdate, onOpenDeal }) {
   const stale = isOnboarded(deal) ? null : staleLabel(deal.staleDays);
+  const blockers = parseMultiValue(deal.blockers);
+  const set = (key, val) => onUpdate(deal.id, key, val);
+
   return (
-    <button onClick={onClick} style={{
+    <div style={{
       width: "100%", textAlign: "left", background: "#fff", border: "1px solid #eef0f4",
-      borderRadius: 12, padding: 13, cursor: "pointer", display: "block",
+      borderRadius: 12, padding: 13, display: "block",
       transition: "border-color .15s, box-shadow .15s",
     }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = "#d8b4fe"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(124,58,237,.08)"; }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = "#eef0f4"; e.currentTarget.style.boxShadow = "none"; }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+      <div
+        onClick={() => onOpenDeal(deal)}
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, cursor: "pointer" }}
+        title="Open deal"
+      >
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.venue}</div>
           <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.group}</div>
         </div>
         <TierBadge tier={dealTier(deal)} />
       </div>
-      <div style={{ marginTop: 10, marginBottom: 10 }}><StatusTag status={isOnboarded(deal) ? "Onboarded" : deal.status} /></div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        <EditableCell value={deal.stage} options={STAGES} onChange={v => set("stage", v)}
+          render={v => (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "#334155", fontWeight: 500 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: STAGE_DOT[v] }} />{v}
+            </span>
+          )} />
+        {isOnboarded(deal)
+          ? <StatusTag status="Onboarded" />
+          : <EditableCell value={deal.status} options={STATUSES} onChange={v => set("status", v)} render={v => <StatusTag status={v} />} />}
+        <EditableCell
+          value={deal.blockers}
+          options={BLOCKERS}
+          multiSelect
+          valueColor="#b91c1c"
+          onChange={v => set("blockers", v)}
+          render={() => blockers.length
+            ? <span style={{ fontSize: 11, color: "#b91c1c", lineHeight: 1.35 }}>{formatMultiValue(blockers)}</span>
+            : <span style={{ fontSize: 11, color: "#cbd5e1", fontStyle: "italic" }}>No blockers</span>}
+        />
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {parseMultiValue(deal.owner).slice(0, 2).map((n, i) => (
             <span key={n} style={{ marginLeft: i ? -4 : 0 }}>
@@ -496,11 +525,11 @@ function PipelineCard({ deal, onClick }) {
           {deal.staleDays > 45 ? "Stale · " : ""}{stale}
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
-function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, tierCountMap, statusCountMap, marketCountMap, ownerCountMap, blockerCountMap, onFilteredCountChange }) {
+function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tierCountMap, statusCountMap, marketCountMap, ownerCountMap, blockerCountMap, onFilteredCountChange }) {
   const [fStatus, setFStatus] = useState([]);
   const [fMarket, setFMarket] = useState([]);
   const [fOwner, setFOwner] = useState([]);
@@ -547,7 +576,7 @@ function PipelineTab({ deals, onOpenDeal, owners, markets, tiers, tierCountMap, 
               {onboardedCol && <span style={{ fontSize: 10.5, color: "#a78bfa", marginLeft: "auto" }}>Joined Dorsia</span>}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {cols[stage].map(d => <PipelineCard key={d.id} deal={d} onClick={() => onOpenDeal(d)} />)}
+              {cols[stage].map(d => <PipelineCard key={d.id} deal={d} onUpdate={onUpdate} onOpenDeal={onOpenDeal} />)}
               {cols[stage].length === 0 && <div style={{ fontSize: 12, color: "#cbd5e1", textAlign: "center", padding: 20 }}>No deals</div>}
             </div>
           </div>
@@ -2127,7 +2156,7 @@ export default function App() {
             )}
 
             {tab === "dashboard" && <DashboardTab deals={deals} insights={insights} tasks={tasks} onOpenDeal={goDeal} priorityMarkets={priorityMarkets} />}
-            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} owners={owners} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onFilteredCountChange={reportFilteredCount} />}
+            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} onUpdate={update} owners={owners} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onFilteredCountChange={reportFilteredCount} />}
             {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} />}
             {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={() => setTab("pipeline")} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} tiers={tiers} />}
           </>
