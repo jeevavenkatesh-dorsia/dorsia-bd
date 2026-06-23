@@ -462,7 +462,7 @@ function DashboardTab({ deals, insights, tasks, onOpenDeal, priorityMarkets }) {
 }
 
 // ============ PIPELINE TAB ============
-function PipelineCard({ deal, onUpdate, onOpenDeal }) {
+function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
   const stale = isOnboarded(deal) ? null : staleLabel(deal.staleDays);
   const blockers = parseMultiValue(deal.blockers);
   const set = (key, val) => onUpdate(deal.id, key, val);
@@ -509,16 +509,29 @@ function PipelineCard({ deal, onUpdate, onOpenDeal }) {
         />
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {parseMultiValue(deal.owner).slice(0, 2).map((n, i) => (
-            <span key={n} style={{ marginLeft: i ? -4 : 0 }}>
-              <Avatar name={n} size={20} />
-            </span>
-          ))}
-          <span style={{ fontSize: 11, color: "#64748b" }}>{deal.market}</span>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginTop: 10 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <EditableCell
+            value={deal.owner}
+            options={owners}
+            multiSelect
+            valueColor="#64748b"
+            onChange={v => set("owner", v)}
+            render={v => <OwnerDisplay owner={v} compact />}
+          />
+          {deal.market && <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{deal.market}</div>}
         </div>
-        <span style={{ fontSize: 11, color: "#94a3b8" }}>{deal.lastContactDisplay !== "No contact logged" ? deal.lastContactDisplay : "—"}</span>
+        <EditableCell
+          value={deal.lastContact}
+          datePicker
+          displayValue={deal.lastContactDisplay}
+          onChange={v => set("lastContact", v)}
+          render={() => (
+            <span style={{ fontSize: 11, color: "#64748b", whiteSpace: "nowrap" }}>
+              {deal.lastContactDisplay !== "No contact logged" ? deal.lastContactDisplay : "—"}
+            </span>
+          )}
+        />
       </div>
       {stale && (
         <div style={{ marginTop: 9, fontSize: 11, color: staleTone(deal.staleDays), background: "#fafafa", borderRadius: 7, padding: "4px 8px" }}>
@@ -576,7 +589,7 @@ function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tier
               {onboardedCol && <span style={{ fontSize: 10.5, color: "#a78bfa", marginLeft: "auto" }}>Joined Dorsia</span>}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {cols[stage].map(d => <PipelineCard key={d.id} deal={d} onUpdate={onUpdate} onOpenDeal={onOpenDeal} />)}
+              {cols[stage].map(d => <PipelineCard key={d.id} deal={d} onUpdate={onUpdate} onOpenDeal={onOpenDeal} owners={owners} />)}
               {cols[stage].length === 0 && <div style={{ fontSize: 12, color: "#cbd5e1", textAlign: "center", padding: 20 }}>No deals</div>}
             </div>
           </div>
@@ -1306,11 +1319,25 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
 }
 
 // ============ DEALS TABLE TAB ============
-function EditableCell({ value, options, onChange, render, multiSelect, valueColor }) {
+function EditableCell({ value, options, onChange, render, multiSelect, valueColor, datePicker, displayValue }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef(null);
-  useEffect(() => { if (editing && !options && ref.current) ref.current.focus(); }, [editing, options]);
+  useEffect(() => { if (editing && !options && !datePicker && ref.current) ref.current.focus(); }, [editing, options, datePicker]);
 
+  if (editing && datePicker) {
+    return (
+      <DatePickerField
+        value={value}
+        display={displayValue}
+        onChange={onChange}
+        onClose={() => setEditing(false)}
+        defaultOpen
+        align="right"
+        hidePencil
+        triggerStyle={{ fontSize: 11, fontWeight: 500, color: "#64748b" }}
+      />
+    );
+  }
   if (editing && options && multiSelect) {
     return (
       <InlineMultiSelect
