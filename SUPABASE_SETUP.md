@@ -29,6 +29,16 @@ where key = 'allowed_email_domains';
 
 If `allowed_email_domains` is empty, any authenticated user can access data.
 
+**External partners** (e.g. `andrew@asghospitality.com`) must have their domain added, or they will sign in successfully but see **0 deals** everywhere. Run `supabase/add-partner-email-domain.sql` in the SQL Editor, or:
+
+```sql
+update app_settings
+set value = '["dorsia.co","asghospitality.com"]'::jsonb
+where key = 'allowed_email_domains';
+```
+
+Then have them refresh the page (no need to re-invite).
+
 ## 4. Auth settings
 
 1. **Authentication → Providers → Email** — enable Email.

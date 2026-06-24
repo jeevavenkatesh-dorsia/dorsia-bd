@@ -16,7 +16,7 @@ insert into public.app_settings (key, value) values
 on conflict (key) do nothing;
 
 -- Set allowed domains after deploy, e.g.:
--- update app_settings set value = '["dorsia.co","dorsia.com"]'::jsonb where key = 'allowed_email_domains';
+-- update app_settings set value = '["dorsia.co","dorsia.com","asghospitality.com"]'::jsonb where key = 'allowed_email_domains';
 
 -- ─── Deals ───
 create table if not exists public.deals (
@@ -76,6 +76,22 @@ as $$
       )
     );
 $$;
+
+-- Lets the app show a clear message when a user is signed in but blocked by the domain allowlist.
+create or replace function public.get_access_status()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'allowed', public.is_bd_user(),
+    'email', coalesce(auth.jwt()->>'email', '')
+  );
+$$;
+
+grant execute on function public.get_access_status() to authenticated;
 
 -- ─── Row Level Security ───
 alter table public.deals enable row level security;

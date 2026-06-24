@@ -47,6 +47,12 @@ export function patchToRow(key, val) {
   return { [dbKey]: v };
 }
 
+export async function fetchAccessStatus() {
+  const { data, error } = await supabase.rpc("get_access_status");
+  if (error) throw error;
+  return data;
+}
+
 export async function fetchDeals() {
   const pageSize = 1000;
   const all = [];

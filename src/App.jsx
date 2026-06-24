@@ -5,6 +5,7 @@ import BrandWordmark from "./components/BrandWordmark.jsx";
 import {
   fetchDeals,
   fetchAppSettings,
+  fetchAccessStatus,
   savePriorityMarkets,
   saveManagedList,
   insertDeal,
@@ -1974,6 +1975,18 @@ export default function App() {
       setDeals(computed);
       setSavedLists(settings.managedLists || { group: [], market: [], owner: [] });
       setPriorityMarkets(settings.priorityMarkets?.length ? settings.priorityMarkets : ["New York", "London", "LA", "Miami", "Chicago", "Dubai", "SF"]);
+      if (!rows.length) {
+        try {
+          const access = await fetchAccessStatus();
+          if (access && access.allowed === false) {
+            setDbError(
+              `Signed in as ${access.email || "your account"}, but this email domain isn't authorized yet. Ask an admin to add it in Supabase (allowed_email_domains), then refresh.`
+            );
+          }
+        } catch {
+          // get_access_status not deployed yet — domain allowlist fix still applies
+        }
+      }
     } catch (e) {
       setDbError(e.message || "Failed to load pipeline data.");
     } finally {
