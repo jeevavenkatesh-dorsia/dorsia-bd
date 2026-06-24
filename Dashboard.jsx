@@ -481,30 +481,54 @@ function useFitColumnBox(boundsRef, innerRef) {
 }
 
 // ============ PIPELINE TAB ============
-function PipelineCard({ deal, onUpdate, onOpenDeal, owners }) {
+function PipelineCard({ deal, onUpdate, onOpenDeal, owners, onDragStart, onDragEnd, isDragging }) {
   const cardRef = useRef(null);
   const stale = isOnboarded(deal) ? null : staleLabel(deal.staleDays);
   const blockers = parseMultiValue(deal.blockers);
   const set = (key, val) => onUpdate(deal.id, key, val);
 
+  const startDrag = (e) => {
+    e.dataTransfer.setData("text/plain", String(deal.id));
+    e.dataTransfer.effectAllowed = "move";
+    onDragStart?.(deal.id);
+  };
+
   return (
     <div ref={cardRef} style={{
       width: "100%", textAlign: "left", background: "#fff", border: "1px solid #eef0f4",
       borderRadius: 12, padding: 13, display: "block", position: "relative",
-      transition: "border-color .15s, box-shadow .15s",
+      transition: "border-color .15s, box-shadow .15s, opacity .15s",
+      opacity: isDragging ? 0.45 : 1,
     }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = "#d8b4fe"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(124,58,237,.08)"; }}
+      onMouseEnter={e => { if (!isDragging) { e.currentTarget.style.borderColor = "#d8b4fe"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(124,58,237,.08)"; } }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = "#eef0f4"; e.currentTarget.style.boxShadow = "none"; }}>
-      <div
-        onClick={() => onOpenDeal(deal)}
-        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, cursor: "pointer" }}
-        title="Open deal"
-      >
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.venue}</div>
-          <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.group}</div>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <div
+          draggable
+          onDragStart={startDrag}
+          onDragEnd={onDragEnd}
+          title="Drag to change stage"
+          style={{
+            flexShrink: 0, width: 18, paddingTop: 2, cursor: "grab", color: "#cbd5e1",
+            fontSize: 14, lineHeight: 1, userSelect: "none", touchAction: "none",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = "#a78bfa"; }}
+          onMouseLeave={e => { e.currentTarget.style.color = "#cbd5e1"; }}
+          onClick={e => e.stopPropagation()}
+        >
+          ⠿
         </div>
-        <TierBadge tier={dealTier(deal)} />
+        <div
+          onClick={() => onOpenDeal(deal)}
+          style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, cursor: "pointer" }}
+          title="Open deal"
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.venue}</div>
+            <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.group}</div>
+          </div>
+          <TierBadge tier={dealTier(deal)} />
+        </div>
       </div>
 
       <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -599,6 +623,8 @@ function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tier
   const [fOwner, setFOwner] = useState([]);
   const [fTier, setFTier] = useState([]);
   const [fBlocker, setFBlocker] = useState([]);
+  const [dragDealId, setDragDealId] = useState(null);
+  const [dropStage, setDropStage] = useState(null);
 
   const filtered = useMemo(() => deals.filter(d =>
     matchesMulti(fStatus, d.status) && matchesMulti(fMarket, d.market) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, dealTier(d)) && matchesMulti(fBlocker, d.blockers)
@@ -613,6 +639,16 @@ function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tier
     filtered.forEach(d => { if (m[d.stage]) m[d.stage].push(d); });
     return m;
   }, [filtered]);
+
+  const endDrag = () => { setDragDealId(null); setDropStage(null); };
+
+  const handleDrop = (stage, e) => {
+    e.preventDefault();
+    const id = Number(e.dataTransfer.getData("text/plain"));
+    const deal = deals.find(d => d.id === id);
+    if (deal && deal.stage !== stage) onUpdate(id, "stage", stage);
+    endDrag();
+  };
 
   const selStyle = { fontSize: 13, padding: "8px 12px", borderRadius: 9, border: "1px solid #e5e7eb", background: "#fff", color: "#475569", cursor: "pointer" };
   const active = fStatus.length || fMarket.length || fOwner.length || fTier.length || fBlocker.length;
@@ -631,8 +667,20 @@ function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tier
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${STAGES.length}, minmax(260px, 1fr))`, gap: 16, alignItems: "start" }}>
         {STAGES.map(stage => {
           const onboardedCol = stage === "Onboarded";
+          const isDropTarget = dragDealId && dropStage === stage;
           return (
-          <div key={stage} style={{ background: onboardedCol ? "#f5f3ff" : "#f8f7fb", border: `1px solid ${onboardedCol ? "#ddd6fe" : "#f0eef6"}`, borderRadius: 14, padding: 12, minHeight: 200, minWidth: 0 }}>
+          <div
+            key={stage}
+            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDropStage(stage); }}
+            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropStage(s => s === stage ? null : s); }}
+            onDrop={e => handleDrop(stage, e)}
+            style={{
+              background: isDropTarget ? (onboardedCol ? "#ede9fe" : "#f3e8ff") : (onboardedCol ? "#f5f3ff" : "#f8f7fb"),
+              border: `2px solid ${isDropTarget ? "#a78bfa" : (onboardedCol ? "#ddd6fe" : "#f0eef6")}`,
+              borderRadius: 14, padding: 12, minHeight: 200, minWidth: 0,
+              transition: "background .15s, border-color .15s",
+            }}
+          >
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, padding: "2px 4px" }}>
               <span style={{ width: 9, height: 9, borderRadius: 999, background: STAGE_DOT[stage] }} />
               <span style={{ fontSize: 13.5, fontWeight: 700, color: onboardedCol ? "#6d28d9" : "#0f172a" }}>{stage}</span>
@@ -640,8 +688,19 @@ function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tier
               {onboardedCol && <span style={{ fontSize: 10.5, color: "#a78bfa", marginLeft: "auto" }}>Joined Dorsia</span>}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {cols[stage].map(d => <PipelineCard key={d.id} deal={d} onUpdate={onUpdate} onOpenDeal={onOpenDeal} owners={owners} />)}
-              {cols[stage].length === 0 && <div style={{ fontSize: 12, color: "#cbd5e1", textAlign: "center", padding: 20 }}>No deals</div>}
+              {cols[stage].map(d => (
+                <PipelineCard
+                  key={d.id}
+                  deal={d}
+                  onUpdate={onUpdate}
+                  onOpenDeal={onOpenDeal}
+                  owners={owners}
+                  onDragStart={setDragDealId}
+                  onDragEnd={endDrag}
+                  isDragging={dragDealId === d.id}
+                />
+              ))}
+              {cols[stage].length === 0 && <div style={{ fontSize: 12, color: "#cbd5e1", textAlign: "center", padding: 20 }}>{isDropTarget ? "Drop here" : "No deals"}</div>}
             </div>
           </div>
           );
