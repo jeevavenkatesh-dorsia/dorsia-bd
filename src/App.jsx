@@ -490,6 +490,10 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners, onDragStart, onDragE
   const startDrag = (e) => {
     e.dataTransfer.setData("text/plain", String(deal.id));
     e.dataTransfer.effectAllowed = "move";
+    if (cardRef.current && e.dataTransfer.setDragImage) {
+      const rect = cardRef.current.getBoundingClientRect();
+      e.dataTransfer.setDragImage(cardRef.current, e.clientX - rect.left, e.clientY - rect.top);
+    }
     onDragStart?.(deal.id);
   };
 
