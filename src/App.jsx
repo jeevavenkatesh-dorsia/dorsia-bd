@@ -629,6 +629,7 @@ function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tier
   const [fBlocker, setFBlocker] = useState([]);
   const [dragDealId, setDragDealId] = useState(null);
   const [dropStage, setDropStage] = useState(null);
+  const [movedIds, setMovedIds] = useState([]); // most-recently-moved first
 
   const filtered = useMemo(() => deals.filter(d =>
     matchesMulti(fStatus, d.status) && matchesMulti(fMarket, d.market) && matchesMulti(fOwner, d.owner) && matchesMulti(fTier, dealTier(d)) && matchesMulti(fBlocker, d.blockers)
@@ -641,8 +642,12 @@ function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tier
   const cols = useMemo(() => {
     const m = Object.fromEntries(STAGES.map(s => [s, []]));
     filtered.forEach(d => { if (m[d.stage]) m[d.stage].push(d); });
+    const rank = new Map(movedIds.map((id, i) => [id, i]));
+    for (const s of STAGES) {
+      m[s].sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : Infinity) - (rank.has(b.id) ? rank.get(b.id) : Infinity));
+    }
     return m;
-  }, [filtered]);
+  }, [filtered, movedIds]);
 
   const endDrag = () => { setDragDealId(null); setDropStage(null); };
 
@@ -650,7 +655,10 @@ function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tier
     e.preventDefault();
     const id = Number(e.dataTransfer.getData("text/plain"));
     const deal = deals.find(d => d.id === id);
-    if (deal && deal.stage !== stage) onUpdate(id, "stage", stage);
+    if (deal && deal.stage !== stage) {
+      onUpdate(id, "stage", stage);
+      setMovedIds(prev => [id, ...prev.filter(x => x !== id)]);
+    }
     endDrag();
   };
 
@@ -1304,10 +1312,11 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
           <SectionCard title={`Group · ${deal.group}`} icon="🏛" right={<span style={{ fontSize: 12, color: "#94a3b8" }}>{groupVenues.length} venue{groupVenues.length !== 1 ? "s" : ""}</span>}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {groupVenues.map(v => (
-                <button key={v.id} onClick={() => v.id !== deal.id && onOpenDeal(v)} style={{
+                <button key={v.id} onClick={() => onOpenDeal(v)} title={`Open ${v.venue}`} style={{
                   display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10,
                   border: v.id === deal.id ? "1.5px solid #c4b5fd" : "1px solid #f1f5f9",
-                  background: v.id === deal.id ? "#faf5ff" : "#fff", cursor: v.id === deal.id ? "default" : "pointer", textAlign: "left", width: "100%",
+                  background: v.id === deal.id ? "#faf5ff" : "#fff", cursor: "pointer", textAlign: "left", width: "100%",
+                  fontFamily: "inherit",
                 }}>
                   <span style={{ width: 8, height: 8, borderRadius: 999, background: STAGE_DOT[v.stage], flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
