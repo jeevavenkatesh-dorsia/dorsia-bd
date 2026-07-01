@@ -11,6 +11,7 @@ import {
   insertDeal,
   insertDeals,
   updateDealField,
+  updateDealFieldByGroup,
   deleteDealsByIds,
   upsertDeals,
 } from "./src/lib/dealsDb.js";
@@ -27,6 +28,17 @@ const PIPELINE_STAGES = ["Lead", "Conversation", "Offer Sent", "Signed"];
 const isOnboarded = d => d.stage === "Onboarded";
 const STATUSES = ["Progressing", "Stuck", "Not a priority"];
 const BLOCKERS = ["Price", "Control", "Unresponsive", "Brand", "Logistics", "No need", "Fees", "Min Spend"];
+const GROUP_SYNC_FIELDS = new Set(["stage", "status", "lastContact", "blockers"]);
+
+function hasSyncableGroup(group) {
+  const g = (group == null ? "" : String(group)).trim();
+  return g && g.toLowerCase() !== "no group";
+}
+
+function activityNotesAdded(prev, next) {
+  const prevIds = new Set((prev || []).map(n => n.id));
+  return (next || []).filter(n => !prevIds.has(n.id));
+}
 
 function parseMultiValue(value) {
   const s = value == null ? "" : String(value).trim();
@@ -2195,10 +2207,66 @@ export default function App() {
 
   const update = async (id, key, val) => {
     const prev = deals;
-    setDeals(ds => ds.map(d => d.id === id ? recompute({ ...d, [key]: val }) : d));
+    const source = deals.find(d => d.id === id);
+    if (!source) return;
+
+    const group = source.group;
+    const canSyncGroup = hasSyncableGroup(group);
+
+    if (key === "activityNotes" && canSyncGroup) {
+      const added = activityNotesAdded(source.activityNotes, val);
+      if (!added.length) {
+        setDeals(ds => ds.map(d => d.id === id ? recompute({ ...d, activityNotes: val }) : d));
+        try {
+          const saved = await updateDealField(id, key, val);
+          setDeals(ds => ds.map(d => d.id === id ? recompute(saved) : d));
+          setDbError("");
+        } catch (e) {
+          setDeals(prev);
+          persistError(e);
+        }
+        return;
+      }
+
+      const patches = deals
+        .filter(d => d.group === group)
+        .map(d => ({
+          id: d.id,
+          activityNotes: d.id === id ? val : [...added, ...(d.activityNotes || [])],
+        }));
+
+      setDeals(ds => ds.map(d => {
+        const patch = patches.find(p => p.id === d.id);
+        return patch ? recompute({ ...d, activityNotes: patch.activityNotes }) : d;
+      }));
+
+      try {
+        const saved = await Promise.all(
+          patches.map(p => updateDealField(p.id, "activityNotes", p.activityNotes))
+        );
+        const byId = Object.fromEntries(saved.map(d => [d.id, recompute(d)]));
+        setDeals(ds => ds.map(d => byId[d.id] || d));
+        setDbError("");
+      } catch (e) {
+        setDeals(prev);
+        persistError(e);
+      }
+      return;
+    }
+
+    const syncGroup = GROUP_SYNC_FIELDS.has(key) && canSyncGroup;
+
+    setDeals(ds => ds.map(d => {
+      if (syncGroup ? d.group === group : d.id === id) return recompute({ ...d, [key]: val });
+      return d;
+    }));
+
     try {
-      const saved = await updateDealField(id, key, val);
-      setDeals(ds => ds.map(d => d.id === id ? recompute(saved) : d));
+      const saved = syncGroup
+        ? await updateDealFieldByGroup(group, key, val)
+        : [await updateDealField(id, key, val)];
+      const byId = Object.fromEntries(saved.map(d => [d.id, recompute(d)]));
+      setDeals(ds => ds.map(d => byId[d.id] || d));
       setDbError("");
     } catch (e) {
       setDeals(prev);

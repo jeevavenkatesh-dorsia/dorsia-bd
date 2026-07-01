@@ -148,6 +148,16 @@ export async function updateDealField(id, key, val) {
   return rowToDeal(data);
 }
 
+export async function updateDealFieldByGroup(group, key, val) {
+  const { data, error } = await supabase
+    .from("deals")
+    .update(patchToRow(key, val))
+    .eq("group_name", group)
+    .select("*");
+  if (error) throw error;
+  return (data || []).map(rowToDeal);
+}
+
 export async function deleteDealsByIds(ids) {
   if (!ids.length) return;
   const { error } = await supabase.from("deals").delete().in("id", ids);
