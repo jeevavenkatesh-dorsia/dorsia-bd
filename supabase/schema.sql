@@ -38,6 +38,7 @@ create table if not exists public.deals (
   contact text not null default '',
   website text not null default '',
   expected_close text not null default '',
+  go_live_date text not null default '',
   tasks jsonb not null default '[]'::jsonb,
   meetings jsonb not null default '[]'::jsonb,
   contacts jsonb not null default '[]'::jsonb,

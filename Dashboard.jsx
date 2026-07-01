@@ -68,6 +68,29 @@ function dealFieldIncludes(deal, field, value) {
   return deal[field] === value;
 }
 
+function parseLiveDate(value) {
+  const t = (value == null ? "" : String(value)).trim();
+  if (!t) return "";
+  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
+  if (slash) {
+    return `${slash[3]}-${slash[1].padStart(2, "0")}-${slash[2].padStart(2, "0")}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  return "";
+}
+
+function formatGoLiveDisplay(iso) {
+  const d = parseIsoDate(iso);
+  if (!d) return "";
+  return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+}
+
+function ownersFromLiveRow(row) {
+  return formatMultiValue(
+    [row.salesRep1, row.salesRep2, row.salesRep3].map(s => (s || "").trim()).filter(Boolean)
+  );
+}
+
 function parseIsoDate(value) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((value || "").trim());
   if (!m) return null;
@@ -602,6 +625,22 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners, tiers, onDragStart, 
         {isOnboarded(deal)
           ? <StatusTag status="Onboarded" />
           : <EditableCell fitColumn boundsRef={cardRef} value={deal.status} options={STATUSES} onChange={v => set("status", v)} render={v => <StatusTag status={v} />} />}
+        {isOnboarded(deal) && (
+          <EditableCell
+            fitColumn
+            boundsRef={cardRef}
+            value={deal.goLiveDate}
+            datePicker
+            displayValue={deal.goLiveDateDisplay || "Set go-live"}
+            onChange={v => set("goLiveDate", v)}
+            render={() => (
+              <span style={{ fontSize: 11, color: "#6d28d9", fontWeight: 600 }}>
+                {deal.goLiveDateDisplay ? `Live ${deal.goLiveDateDisplay}` : "Set go-live date"}
+              </span>
+            )}
+          />
+        )}
+        {!isOnboarded(deal) && (
         <EditableCell
           fitColumn
           boundsRef={cardRef}
@@ -615,6 +654,7 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners, tiers, onDragStart, 
             ? <span style={{ fontSize: 11, color: "#b91c1c", lineHeight: 1.35 }}>{formatMultiValue(blockers)}</span>
             : <span style={{ fontSize: 11, color: "#cbd5e1", fontStyle: "italic" }}>No blockers</span>}
         />
+        )}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10 }}>
@@ -1331,6 +1371,15 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
           Last contact:
           <DatePickerField value={deal.lastContact} display={deal.lastContactDisplay} onChange={v => set("lastContact", v)} placeholder="No contact logged" />
         </span>
+        {isOnboarded(deal) && (
+          <>
+            <span style={{ color: "#e2e8f0" }}>|</span>
+            <span style={{ fontSize: 13, color: "#6d28d9", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
+              Go-live:
+              <DatePickerField value={deal.goLiveDate} display={deal.goLiveDateDisplay || "Set date"} onChange={v => set("goLiveDate", v)} placeholder="Set go-live date" />
+            </span>
+          </>
+        )}
         {stale && <span style={{ fontSize: 12, color: staleTone(deal.staleDays), fontWeight: 500 }}>· {stale}</span>}
       </div>
 
@@ -1363,6 +1412,9 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
             <EditableDetailRow label="Website" value={deal.website} onChange={v => set("website", v)} placeholder="Add website" />
             <EditableDetailRow label="Expected Close" value={deal.expectedClose} onChange={v => set("expectedClose", v)} placeholder="Set date" />
             <EditableDetailRow label="Last Contact" value={deal.lastContact} datePicker displayValue={deal.lastContactDisplay} onChange={v => set("lastContact", v)} placeholder="No contact logged" accent={deal.lastContact ? "#0f172a" : null} />
+            {isOnboarded(deal) && (
+              <EditableDetailRow label="Go-live date" value={deal.goLiveDate} datePicker displayValue={deal.goLiveDateDisplay} onChange={v => set("goLiveDate", v)} placeholder="Set go-live date" accent={deal.goLiveDate ? "#6d28d9" : null} />
+            )}
           </SectionCard>
 
           <SectionCard title="Decks" icon="📑">
@@ -1589,7 +1641,7 @@ function EditableCell({ value, options, onChange, render, multiSelect, valueColo
   );
 }
 
-function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statusCountMap, marketCountMap, ownerCountMap, blockerCountMap, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onFilteredCountChange, filters, onFilterChange }) {
+function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statusCountMap, marketCountMap, ownerCountMap, blockerCountMap, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onImportLive, onFilteredCountChange, filters, onFilterChange }) {
   const { search, fStage, fStatus, fMarket, fOwner, fTier, fBlocker, sort } = filters;
   const setSearch = v => onFilterChange({ search: v });
   const setFStage = v => onFilterChange({ fStage: v });
@@ -1648,6 +1700,7 @@ function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statu
         {filtersActive > 0 && <button onClick={clearFilters} style={{ ...selStyle, color: "#7c3aed", fontWeight: 600 }}>Clear filters</button>}
         <button onClick={onManageLists} style={{ ...selStyle, fontWeight: 600 }}>⚙ Manage lists</button>
         <button onClick={onImport} style={{ ...selStyle, fontWeight: 600 }}>⬆ Import CSV</button>
+        <button onClick={onImportLive} style={{ ...selStyle, fontWeight: 600, color: "#6d28d9", borderColor: "#ddd6fe" }}>⬆ Import live restaurants</button>
         <button onClick={startDraft} disabled={!!draft} style={{ ...selStyle, background: draft ? "#ede9fe" : "#6d28d9", color: draft ? "#a78bfa" : "#fff", fontWeight: 600, border: "none", cursor: draft ? "default" : "pointer" }}>+ Add Deal</button>
         <button onClick={() => onExport(filtered)} style={{ ...selStyle, background: "#1e1b4b", color: "#fff", fontWeight: 600, border: "none" }}>⬇ Export CSV</button>
       </div>
@@ -1981,16 +2034,215 @@ function ImportModal({ deals, onImport, onClose }) {
   );
 }
 
+const LIVE_CSV_FIELD_ALIASES = {
+  group: ["account name", "accountname", "group", "restaurant group"],
+  venue: ["restaurant name", "restaurantname", "venue", "restaurant"],
+  goLiveDate: ["go live date", "golivedate", "live date"],
+  tier: ["restaurant tier", "restauranttier", "tier"],
+  market: ["market", "city"],
+  salesRep1: ["sales rep name", "salesrepname", "sales lead", "owner", "primary sales rep"],
+  salesRep2: ["second sales rep name", "secondsalesrepname", "second sales lead"],
+  salesRep3: ["third sales rep name", "thirdsalesrepname", "third sales lead"],
+};
+
+function normalizeCSVHeader(h) {
+  return h.trim().toLowerCase().replace(/^\ufeff/, "").replace(/_/g, " ").replace(/\s+/g, " ");
+}
+
+function mapLiveCSVRows(rows) {
+  if (rows.length < 1) return [];
+  const header = rows[0].map(normalizeCSVHeader);
+  const colIndex = {};
+  for (const [field, aliases] of Object.entries(LIVE_CSV_FIELD_ALIASES)) {
+    const idx = header.findIndex(h => aliases.includes(h));
+    if (idx >= 0) colIndex[field] = idx;
+  }
+  if (colIndex.tier === undefined) {
+    const idx = header.findIndex(h => h.includes("tier"));
+    if (idx >= 0) colIndex.tier = idx;
+  }
+  return rows.slice(1).map(r => {
+    const o = {};
+    for (const [field, idx] of Object.entries(colIndex)) o[field] = (r[idx] || "").trim();
+    if (o.tier) o.tier = normalizeTier(o.tier);
+    return o;
+  }).filter(o => (o.venue || "").trim());
+}
+
+function normVenueName(s) {
+  return (s || "").trim().toLowerCase();
+}
+
+function buildLiveRestaurantPayload(row) {
+  return {
+    venue: (row.venue || "").trim(),
+    group: (row.group || "").trim() || "No Group",
+    tier: normalizeTier(row.tier) || "",
+    market: (row.market || "").trim(),
+    stage: "Onboarded",
+    srcStage: "Onboarded",
+    status: "Progressing",
+    owner: ownersFromLiveRow(row),
+    goLiveDate: parseLiveDate(row.goLiveDate),
+    blockers: "",
+  };
+}
+
+function LiveRestaurantsImportModal({ deals, onImport, onClose }) {
+  const [stage, setStage] = useState("upload");
+  const [parsed, setParsed] = useState([]);
+  const [fileName, setFileName] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+
+  const venueIndex = useMemo(() => {
+    const m = {};
+    deals.forEach(d => {
+      const k = normVenueName(d.venue);
+      if (!m[k]) m[k] = [];
+      m[k].push(d);
+    });
+    return m;
+  }, [deals]);
+
+  const handleFile = async (file) => {
+    setError("");
+    try {
+      const text = await file.text();
+      const rows = mapLiveCSVRows(parseCSV(text));
+      if (!rows.length) {
+        setError("No rows found. Include a header row with restaurant_name (or restaurant name) and go_live_date.");
+        return;
+      }
+      setParsed(rows);
+      setFileName(file.name);
+      setStage("review");
+    } catch {
+      setError("Couldn't read that file. Is it a valid .csv?");
+    }
+  };
+
+  const analysis = useMemo(() => {
+    const toUpdate = [];
+    const toAdd = [];
+    parsed.forEach(row => {
+      const matches = venueIndex[normVenueName(row.venue)] || [];
+      if (matches.length) {
+        matches.forEach(d => toUpdate.push({ deal: d, row }));
+      } else {
+        toAdd.push(row);
+      }
+    });
+    return { toUpdate, toAdd };
+  }, [parsed, venueIndex]);
+
+  const updateVenueCount = useMemo(() => new Set(analysis.toUpdate.map(x => normVenueName(x.row.venue))).size, [analysis.toUpdate]);
+  const importCount = analysis.toUpdate.length + analysis.toAdd.length;
+
+  const commit = async () => {
+    if (!importCount || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await onImport(parsed);
+      onClose();
+    } catch (e) {
+      setError(e?.message || "Import failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "50px 20px", zIndex: 50, overflowY: "auto" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, padding: 26, width: "100%", maxWidth: 760, boxShadow: "0 20px 60px rgba(15,23,42,.25)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Import live restaurants</h2>
+          <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 9, width: 30, height: 30, fontSize: 16, cursor: "pointer", color: "#64748b" }}>✕</button>
+        </div>
+
+        {stage === "upload" && (
+          <>
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 18px", lineHeight: 1.55 }}>
+              Upload your live-restaurant export. Expected columns: <strong>account_name</strong>, <strong>restaurant_name</strong>, <strong>go_live_date</strong> (MM/DD/YYYY), <strong>restaurant_tier</strong>, <strong>market</strong>, and up to three sales rep columns.
+              Matching restaurants by name are moved to <strong>Onboarded</strong> with updated tier, market, sales lead(s), and go-live date. New names are added as onboarded deals.
+            </p>
+            <div onClick={() => fileRef.current?.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }}
+              style={{ border: "1.5px dashed #c4b5fd", borderRadius: 14, padding: 40, textAlign: "center", cursor: "pointer", background: "#faf5ff" }}>
+              <div style={{ fontSize: 26, marginBottom: 8 }}>⬆</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#6d28d9" }}>Drop live restaurants CSV here</div>
+              <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
+            </div>
+            {error && <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, fontSize: 13, background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}>{error}</div>}
+          </>
+        )}
+
+        {stage === "review" && (
+          <>
+            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 14px" }}>{fileName} · {parsed.length} row{parsed.length !== 1 ? "s" : ""}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+              <div style={{ background: "#f5f3ff", borderRadius: 12, padding: 14, textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#6d28d9" }}>{analysis.toUpdate.length}</div>
+                <div style={{ fontSize: 12, color: "#7c3aed" }}>pipeline deal{analysis.toUpdate.length !== 1 ? "s" : ""} to onboard</div>
+              </div>
+              <div style={{ background: "#ecfdf5", borderRadius: 12, padding: 14, textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#047857" }}>{analysis.toAdd.length}</div>
+                <div style={{ fontSize: 12, color: "#059669" }}>new live restaurant{analysis.toAdd.length !== 1 ? "s" : ""}</div>
+              </div>
+              <div style={{ background: "#f8fafc", borderRadius: 12, padding: 14, textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#475569" }}>{updateVenueCount}</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>unique name{updateVenueCount !== 1 ? "s" : ""} matched</div>
+              </div>
+            </div>
+            <div style={{ maxHeight: 280, overflowY: "auto", border: "1px solid #eef0f4", borderRadius: 12 }}>
+              {parsed.slice(0, 40).map((row, i) => {
+                const matches = venueIndex[normVenueName(row.venue)] || [];
+                return (
+                  <div key={i} style={{ padding: "10px 14px", borderBottom: "1px solid #f1f5f9", fontSize: 13 }}>
+                    <div style={{ fontWeight: 600, color: "#0f172a" }}>{row.venue}</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                      {matches.length ? `Onboard ${matches.length} match${matches.length !== 1 ? "es" : ""}` : "Add as new onboarded"} · {row.market || "no market"} · Live {row.goLiveDate || "—"} · {ownersFromLiveRow(row) || "no lead"}
+                    </div>
+                  </div>
+                );
+              })}
+              {parsed.length > 40 && <div style={{ padding: 12, fontSize: 12, color: "#94a3b8", textAlign: "center" }}>…and {parsed.length - 40} more</div>}
+            </div>
+            {error && <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, fontSize: 13, background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}>{error}</div>}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18 }}>
+              <button onClick={() => { setStage("upload"); setParsed([]); }} disabled={busy} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 9, padding: "9px 16px", fontSize: 13, fontWeight: 500, color: "#64748b", cursor: busy ? "default" : "pointer" }}>← Choose different file</button>
+              <button onClick={commit} disabled={!importCount || busy} style={{ background: importCount && !busy ? "#6d28d9" : "#e5e7eb", color: "#fff", border: "none", borderRadius: 9, padding: "9px 18px", fontSize: 13.5, fontWeight: 600, cursor: importCount && !busy ? "pointer" : "default" }}>{busy ? "Importing…" : `Onboard ${importCount} deal${importCount !== 1 ? "s" : ""}`}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ============ APP SHELL ============
 function recompute(d) {
   const tier = normalizeTier(d.tier) || (d.tier || "").trim();
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((d.lastContact || "").trim());
+  const goLive = parseIsoDate(d.goLiveDate);
+  let staleDays = null;
+  let lastContactDisplay = d.lastContact && String(d.lastContact).trim() ? d.lastContact : "No contact logged";
   if (m) {
     const dt = new Date(+m[1], +m[2] - 1, +m[3]);
     const days = Math.round((TODAY - dt) / 86400000);
-    return { ...d, tier, staleDays: days >= 0 ? days : null, lastContactDisplay: dt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }) };
+    staleDays = days >= 0 ? days : null;
+    lastContactDisplay = dt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
   }
-  return { ...d, tier, staleDays: null, lastContactDisplay: d.lastContact && d.lastContact.trim() ? d.lastContact : "No contact logged" };
+  return {
+    ...d,
+    tier,
+    staleDays,
+    lastContactDisplay,
+    goLiveDateDisplay: goLive ? formatGoLiveDisplay(d.goLiveDate) : "",
+  };
 }
 
 function buildInsights(allDeals) {
@@ -2124,6 +2376,7 @@ export default function App() {
   const [openDeal, setOpenDeal] = useState(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [liveImportOpen, setLiveImportOpen] = useState(false);
 
   const [savedLists, setSavedLists] = useState({ group: [], market: [], owner: [] });
   const [priorityMarkets, setPriorityMarkets] = useState([]);
@@ -2307,8 +2560,49 @@ export default function App() {
       notes: row.notes || "", dealValue: row.dealValue || "", year1ARR: row.year1ARR || "", billing: row.billing || "",
       contact: row.contact || "", website: row.website || "", expectedClose: row.expectedClose || "",
       tasks: row.tasks ?? [], meetings: row.meetings ?? [], contacts: row.contacts ?? [], activityNotes: row.activityNotes ?? [],
+      goLiveDate: row.goLiveDate || "",
     };
     return recompute(id ? { ...base, id } : base);
+  };
+
+  const importLiveRestaurants = async (parsedRows) => {
+    const venueIndex = {};
+    deals.forEach(d => {
+      const k = normVenueName(d.venue);
+      if (!venueIndex[k]) venueIndex[k] = [];
+      venueIndex[k].push(d);
+    });
+
+    const toUpsert = [];
+    const toInsert = [];
+
+    for (const row of parsedRows) {
+      const patch = buildLiveRestaurantPayload(row);
+      const matches = venueIndex[normVenueName(row.venue)] || [];
+      if (matches.length) {
+        matches.forEach(d => toUpsert.push(recompute({ ...d, ...patch })));
+      } else {
+        const rec = recompute({
+          ...patch,
+          lastContact: "",
+          notes: "", dealValue: "", year1ARR: "", billing: "", contact: "", website: "", expectedClose: "",
+          tasks: [], meetings: [], contacts: [], activityNotes: [],
+        });
+        delete rec.id;
+        toInsert.push(rec);
+      }
+    }
+
+    try {
+      if (toUpsert.length) await upsertDeals(toUpsert);
+      if (toInsert.length) await insertDeals(toInsert);
+      await loadAll();
+      setDbError("");
+    } catch (e) {
+      persistError(e);
+      await loadAll();
+      throw e;
+    }
   };
 
   const importDeals = async ({ toAdd, toUpdate, toDeleteIds }) => {
@@ -2515,13 +2809,14 @@ export default function App() {
 
             {tab === "dashboard" && <DashboardTab deals={deals} insights={insights} tasks={tasks} onOpenDeal={goDeal} priorityMarkets={priorityMarkets} />}
             {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} onUpdate={update} owners={owners} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
-            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
+            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onImportLive={() => setLiveImportOpen(true)} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
             {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={goBackFromDeal} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} tiers={tiers} />}
           </>
         )}
       </div>
       {manageOpen && <ManageListsModal deals={deals} groups={groups} markets={markets} owners={owners} priorityMarkets={priorityMarkets} onTogglePriority={togglePriorityMarket} onAdd={addOption} onRename={renameOption} onDelete={deleteOption} onClose={() => setManageOpen(false)} />}
       {importOpen && <ImportModal deals={deals} onImport={importDeals} onClose={() => setImportOpen(false)} />}
+      {liveImportOpen && <LiveRestaurantsImportModal deals={deals} onImport={importLiveRestaurants} onClose={() => setLiveImportOpen(false)} />}
     </div>
   );
 }

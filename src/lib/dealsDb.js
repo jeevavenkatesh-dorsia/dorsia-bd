@@ -11,6 +11,7 @@ const DB_TO_APP = {
   year1_arr: "year1ARR",
   expected_close: "expectedClose",
   activity_notes: "activityNotes",
+  go_live_date: "goLiveDate",
 };
 
 const APP_TO_DB = Object.fromEntries(
@@ -31,7 +32,7 @@ export function rowToDeal(row) {
 export function dealToRow(deal) {
   const row = {};
   for (const [key, value] of Object.entries(deal)) {
-    if (["staleDays", "lastContactDisplay", "ownerInitials"].includes(key)) continue;
+    if (["staleDays", "lastContactDisplay", "ownerInitials", "goLiveDateDisplay"].includes(key)) continue;
     const dbKey = APP_TO_DB[key] || key;
     let val = value ?? (JSON_FIELDS.has(key) ? [] : "");
     if (key === "tier") val = normalizeTier(val) || (val || "").trim();
