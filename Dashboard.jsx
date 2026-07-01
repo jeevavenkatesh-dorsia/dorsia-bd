@@ -1349,7 +1349,7 @@ function SectionCard({ title, icon, right, children }) {
   );
 }
 
-function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, groups, markets, tiers }) {
+function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, onDelete, owners, groups, markets, tiers }) {
   const set = (key, val) => onUpdate(deal.id, key, val);
   // Parsed-from-notes activity, plus any manually added notes (stored on the deal so they persist).
   const manualNotes = deal.activityNotes || [];
@@ -1400,7 +1400,15 @@ function DealDetail({ deal, allDeals, onBack, onOpenDeal, onUpdate, owners, grou
             <div style={{ fontSize: 13.5, color: "#94a3b8", marginTop: 3 }}>{deal.group} · {deal.market}</div>
           </div>
         </div>
-        <button onClick={onBack} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 9, padding: "7px 14px", fontSize: 13, fontWeight: 500, color: "#475569", cursor: "pointer" }}>← Back</button>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={() => onDelete(deal.id)}
+            style={{ background: "#fff", border: "1px solid #fecaca", borderRadius: 9, padding: "7px 14px", fontSize: 13, fontWeight: 500, color: "#dc2626", cursor: "pointer" }}
+          >
+            Delete
+          </button>
+          <button onClick={onBack} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 9, padding: "7px 14px", fontSize: 13, fontWeight: 500, color: "#475569", cursor: "pointer" }}>← Back</button>
+        </div>
       </div>
 
       {/* Header status bar */}
@@ -1688,7 +1696,7 @@ function EditableCell({ value, options, onChange, render, multiSelect, valueColo
   );
 }
 
-function DealsTable({ deals, owners, groups, markets, tiers, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onImportLive, onFilteredCountChange, filters, onFilterChange }) {
+function DealsTable({ deals, owners, groups, markets, tiers, onUpdate, onOpenDeal, onDelete, onExport, onManageLists, onAddDeal, onImport, onImportLive, onFilteredCountChange, filters, onFilterChange }) {
   const { search, fStage, fStatus, fMarket, fOwner, fTier, fBlocker, sort } = filters;
   const setSearch = v => onFilterChange({ search: v });
   const setFStage = v => onFilterChange({ fStage: v });
@@ -1764,7 +1772,7 @@ function DealsTable({ deals, owners, groups, markets, tiers, onUpdate, onOpenDea
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr style={{ borderBottom: "1px solid #f1f5f9" }}>
-              <Th k="venue">Restaurant</Th><Th k="tier">Tier</Th><Th k="stage">Stage</Th><Th k="status">Status</Th><Th k="owner">Sales Lead</Th><Th k="market">Market</Th><Th k="blockers">Blockers</Th><Th k="staleDays">Last Contact</Th>
+              <Th k="venue">Restaurant</Th><Th k="tier">Tier</Th><Th k="stage">Stage</Th><Th k="status">Status</Th><Th k="owner">Sales Lead</Th><Th k="market">Market</Th><Th k="blockers">Blockers</Th><Th k="staleDays">Last Contact</Th><th style={{ width: 44 }} />
             </tr></thead>
             <tbody>
               {draft && (() => {
@@ -1811,7 +1819,7 @@ function DealsTable({ deals, owners, groups, markets, tiers, onUpdate, onOpenDea
               })()}
               {draft && missing.length > 0 && (
                 <tr style={{ background: "#faf5ff" }}>
-                  <td colSpan={8} style={{ padding: "0 14px 10px", fontSize: 12, color: "#b45309" }}>
+                  <td colSpan={9} style={{ padding: "0 14px 10px", fontSize: 12, color: "#b45309" }}>
                     Still needed: {missing.map(k => ({ tier: "Tier", venue: "Restaurant name", group: "Group", stage: "Stage", status: "Status", owner: "Sales Lead", lastContact: "Last Contact" }[k])).join(", ")}
                   </td>
                 </tr>
@@ -1855,6 +1863,18 @@ function DealsTable({ deals, owners, groups, markets, tiers, onUpdate, onOpenDea
                   <td style={{ padding: "12px 14px" }} onClick={e => e.stopPropagation()}>
                     <EditableCell value={d.lastContact} datePicker displayValue={d.lastContactDisplay} onChange={v => onUpdate(d.id, "lastContact", v)}
                       render={() => <span style={{ fontSize: 13, color: "#64748b" }}>{d.lastContactDisplay}</span>} />
+                  </td>
+                  <td style={{ padding: "12px 8px", textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      title="Delete deal"
+                      onClick={() => onDelete(d.id)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 16, padding: "4px 6px", borderRadius: 6, lineHeight: 1 }}
+                      onMouseEnter={e => { e.currentTarget.style.color = "#dc2626"; e.currentTarget.style.background = "#fef2f2"; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = "#cbd5e1"; e.currentTarget.style.background = "none"; }}
+                    >
+                      🗑
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -2752,6 +2772,25 @@ export default function App() {
     }
   };
 
+  const deleteDeal = async (id) => {
+    const deal = deals.find(d => d.id === id);
+    if (!deal) return;
+    const label = deal.market ? `${deal.venue} (${deal.market})` : deal.venue;
+    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
+
+    const prev = deals;
+    setDeals(ds => ds.filter(d => d.id !== id));
+    if (openDeal?.id === id) goBackFromDeal();
+
+    try {
+      await deleteDealsByIds([id]);
+      setDbError("");
+    } catch (e) {
+      setDeals(prev);
+      persistError(e);
+    }
+  };
+
   const exportCSV = rows => {
     const blob = new Blob([toCSV(rows)], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -2859,8 +2898,8 @@ export default function App() {
 
             {tab === "dashboard" && <DashboardTab deals={deals} insights={insights} tasks={tasks} onOpenDeal={goDeal} priorityMarkets={priorityMarkets} />}
             {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} onUpdate={update} owners={owners} markets={markets} tiers={tiers} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
-            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onImportLive={() => setLiveImportOpen(true)} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
-            {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={goBackFromDeal} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} tiers={tiers} />}
+            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} onUpdate={update} onOpenDeal={goDeal} onDelete={deleteDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onImportLive={() => setLiveImportOpen(true)} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
+            {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={goBackFromDeal} onOpenDeal={goDeal} onUpdate={update} onDelete={deleteDeal} owners={owners} groups={groups} markets={markets} tiers={tiers} />}
           </>
         )}
       </div>
