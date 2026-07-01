@@ -269,6 +269,46 @@ function matchesMulti(selected, value) {
   return selected.includes(value);
 }
 
+function applyDealFilters(deals, filters, skip = new Set()) {
+  const {
+    search = "",
+    fStage = [],
+    fStatus = [],
+    fMarket = [],
+    fOwner = [],
+    fTier = [],
+    fBlocker = [],
+  } = filters;
+
+  return (deals || []).filter(d => {
+    if (!skip.has("search") && search && !(d.venue + d.group + d.market).toLowerCase().includes(search.toLowerCase())) return false;
+    if (!skip.has("fStage") && fStage.length && !matchesMulti(fStage, d.stage)) return false;
+    if (!skip.has("fStatus") && fStatus.length && !matchesMulti(fStatus, d.status)) return false;
+    if (!skip.has("fMarket") && fMarket.length && !matchesMulti(fMarket, d.market)) return false;
+    if (!skip.has("fOwner") && fOwner.length && !matchesMulti(fOwner, d.owner)) return false;
+    if (!skip.has("fTier") && fTier.length && !matchesMulti(fTier, dealTier(d))) return false;
+    if (!skip.has("fBlocker") && fBlocker.length && !matchesMulti(fBlocker, d.blockers)) return false;
+    return true;
+  });
+}
+
+function contextualCounts(deals, filters, field, skipKey) {
+  const subset = applyDealFilters(deals, filters, new Set([skipKey]));
+  if (field === "tier") return tierCounts(subset);
+  if (field === "status") return statusCounts(subset);
+  if (field === "stage") return stageCounts(subset);
+  return fieldCounts(subset, field);
+}
+
+function stageCounts(deals) {
+  const counts = Object.fromEntries(STAGES.map(s => [s, 0]));
+  for (const d of deals || []) {
+    const s = (d.stage || "").trim();
+    if (s) counts[s] = (counts[s] || 0) + 1;
+  }
+  return counts;
+}
+
 const UI_STORAGE_KEY = "dorsia-bd-ui";
 const DEFAULT_UI_STATE = {
   tab: "dashboard",
@@ -718,7 +758,7 @@ function PipelineCard({ deal, onUpdate, onOpenDeal, owners, tiers, onDragStart, 
   );
 }
 
-function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tierCountMap, statusCountMap, marketCountMap, ownerCountMap, blockerCountMap, onFilteredCountChange, filters, onFilterChange }) {
+function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, onFilteredCountChange, filters, onFilterChange }) {
   const { search, fStatus, fMarket, fOwner, fTier, fBlocker } = filters;
   const setSearch = v => onFilterChange({ search: v });
   const setFStatus = v => onFilterChange({ fStatus: v });
@@ -729,6 +769,13 @@ function PipelineTab({ deals, onOpenDeal, onUpdate, owners, markets, tiers, tier
   const [dragDealId, setDragDealId] = useState(null);
   const [dropStage, setDropStage] = useState(null);
   const [movedIds, setMovedIds] = useState([]); // most-recently-moved first
+
+  const pipelineFilters = useMemo(() => ({ search, fStatus, fMarket, fOwner, fTier, fBlocker }), [search, fStatus, fMarket, fOwner, fTier, fBlocker]);
+  const tierCountMap = useMemo(() => contextualCounts(deals, pipelineFilters, "tier", "fTier"), [deals, pipelineFilters]);
+  const statusCountMap = useMemo(() => contextualCounts(deals, pipelineFilters, "status", "fStatus"), [deals, pipelineFilters]);
+  const marketCountMap = useMemo(() => contextualCounts(deals, pipelineFilters, "market", "fMarket"), [deals, pipelineFilters]);
+  const ownerCountMap = useMemo(() => contextualCounts(deals, pipelineFilters, "owner", "fOwner"), [deals, pipelineFilters]);
+  const blockerCountMap = useMemo(() => contextualCounts(deals, pipelineFilters, "blockers", "fBlocker"), [deals, pipelineFilters]);
 
   const filtered = useMemo(() => deals.filter(d =>
     (!search || (d.venue + d.group + d.market).toLowerCase().includes(search.toLowerCase())) &&
@@ -1641,7 +1688,7 @@ function EditableCell({ value, options, onChange, render, multiSelect, valueColo
   );
 }
 
-function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statusCountMap, marketCountMap, ownerCountMap, blockerCountMap, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onImportLive, onFilteredCountChange, filters, onFilterChange }) {
+function DealsTable({ deals, owners, groups, markets, tiers, onUpdate, onOpenDeal, onExport, onManageLists, onAddDeal, onImport, onImportLive, onFilteredCountChange, filters, onFilterChange }) {
   const { search, fStage, fStatus, fMarket, fOwner, fTier, fBlocker, sort } = filters;
   const setSearch = v => onFilterChange({ search: v });
   const setFStage = v => onFilterChange({ fStage: v });
@@ -1652,6 +1699,14 @@ function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statu
   const setFBlocker = v => onFilterChange({ fBlocker: v });
   const setSort = v => onFilterChange({ sort: typeof v === "function" ? v(sort) : v });
   const [draft, setDraft] = useState(null); // null = no draft open
+
+  const tableFilters = useMemo(() => ({ search, fStage, fStatus, fMarket, fOwner, fTier, fBlocker }), [search, fStage, fStatus, fMarket, fOwner, fTier, fBlocker]);
+  const tierCountMap = useMemo(() => contextualCounts(deals, tableFilters, "tier", "fTier"), [deals, tableFilters]);
+  const stageCountMap = useMemo(() => contextualCounts(deals, tableFilters, "stage", "fStage"), [deals, tableFilters]);
+  const statusCountMap = useMemo(() => contextualCounts(deals, tableFilters, "status", "fStatus"), [deals, tableFilters]);
+  const marketCountMap = useMemo(() => contextualCounts(deals, tableFilters, "market", "fMarket"), [deals, tableFilters]);
+  const ownerCountMap = useMemo(() => contextualCounts(deals, tableFilters, "owner", "fOwner"), [deals, tableFilters]);
+  const blockerCountMap = useMemo(() => contextualCounts(deals, tableFilters, "blockers", "fBlocker"), [deals, tableFilters]);
 
   const REQUIRED = ["tier", "venue"];
   const startDraft = () => setDraft({ tier: "", venue: "", group: "", market: "", stage: "", status: "", owner: "", lastContact: "" });
@@ -1692,7 +1747,7 @@ function DealsTable({ deals, owners, groups, markets, tiers, tierCountMap, statu
         <input placeholder="Search deals…" value={search} onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, minWidth: 200, fontSize: 13, padding: "9px 14px", borderRadius: 10, border: "1px solid #e5e7eb" }} />
         <MultiFilter label="All Tiers" options={tiers} selected={fTier} onChange={setFTier} counts={tierCountMap} />
-        <MultiFilter label="All Stages" options={STAGES} selected={fStage} onChange={setFStage} />
+        <MultiFilter label="All Stages" options={STAGES} selected={fStage} onChange={setFStage} counts={stageCountMap} />
         <MultiFilter label="All Status" options={STATUSES} selected={fStatus} onChange={setFStatus} counts={statusCountMap} />
         <MultiFilter label="All Reasons" options={BLOCKERS} selected={fBlocker} onChange={setFBlocker} counts={blockerCountMap} />
         <MultiFilter label="All Markets" options={markets.filter(Boolean)} selected={fMarket} onChange={setFMarket} counts={marketCountMap} />
@@ -2450,11 +2505,6 @@ export default function App() {
   const insights = useMemo(() => buildInsights(deals), [deals]);
   const tasks = useMemo(() => buildTasks(deals), [deals]);
   const tiers = useMemo(() => tierOptions(deals), [deals]);
-  const tierCountMap = useMemo(() => tierCounts(deals), [deals]);
-  const statusCountMap = useMemo(() => statusCounts(deals), [deals]);
-  const marketCountMap = useMemo(() => fieldCounts(deals, "market"), [deals]);
-  const ownerCountMap = useMemo(() => fieldCounts(deals, "owner"), [deals]);
-  const blockerCountMap = useMemo(() => fieldCounts(deals, "blockers"), [deals]);
 
   const persistError = (e) => setDbError(e?.message || "Save failed. Your change may not have been stored.");
 
@@ -2808,8 +2858,8 @@ export default function App() {
             )}
 
             {tab === "dashboard" && <DashboardTab deals={deals} insights={insights} tasks={tasks} onOpenDeal={goDeal} priorityMarkets={priorityMarkets} />}
-            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} onUpdate={update} owners={owners} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
-            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onImportLive={() => setLiveImportOpen(true)} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
+            {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} onUpdate={update} owners={owners} markets={markets} tiers={tiers} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
+            {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onImportLive={() => setLiveImportOpen(true)} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
             {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={goBackFromDeal} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} tiers={tiers} />}
           </>
         )}
