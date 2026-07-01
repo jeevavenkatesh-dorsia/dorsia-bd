@@ -2086,7 +2086,7 @@ export default function App() {
   const setTab = useCallback((t) => {
     setUiState(prev => {
       const next = { ...prev, tab: t };
-      saveUiState(next);
+      if (t !== "detail") saveUiState(next);
       return next;
     });
   }, []);
@@ -2108,6 +2108,7 @@ export default function App() {
     sort: uiState.sort,
   }), [uiState]);
   const [headerDealCount, setHeaderDealCount] = useState(null);
+  const [returnTab, setReturnTab] = useState("deals");
   const [openDeal, setOpenDeal] = useState(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -2345,7 +2346,17 @@ export default function App() {
     const a = document.createElement("a"); a.href = url; a.download = "dorsia_bd_pipeline.csv"; a.click();
     URL.revokeObjectURL(url);
   };
-  const goDeal = d => { setOpenDeal(d); setTab("detail"); window.scrollTo(0, 0); };
+  const goDeal = d => {
+    if (tab !== "detail") setReturnTab(tab);
+    setOpenDeal(d);
+    setTab("detail");
+    window.scrollTo(0, 0);
+  };
+  const goBackFromDeal = () => {
+    setOpenDeal(null);
+    setTab(returnTab);
+    window.scrollTo(0, 0);
+  };
   const goPipeline = () => { setOpenDeal(null); setTab("pipeline"); window.scrollTo(0, 0); };
   const liveDeal = openDeal ? deals.find(d => d.id === openDeal.id) || openDeal : null;
 
@@ -2437,7 +2448,7 @@ export default function App() {
             {tab === "dashboard" && <DashboardTab deals={deals} insights={insights} tasks={tasks} onOpenDeal={goDeal} priorityMarkets={priorityMarkets} />}
             {tab === "pipeline" && <PipelineTab deals={deals} onOpenDeal={goDeal} onUpdate={update} owners={owners} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
             {tab === "deals" && <DealsTable deals={deals} owners={owners} groups={groups} markets={markets} tiers={tiers} tierCountMap={tierCountMap} statusCountMap={statusCountMap} marketCountMap={marketCountMap} ownerCountMap={ownerCountMap} blockerCountMap={blockerCountMap} onUpdate={update} onOpenDeal={goDeal} onExport={exportCSV} onManageLists={() => setManageOpen(true)} onAddDeal={addDeal} onImport={() => setImportOpen(true)} onFilteredCountChange={reportFilteredCount} filters={filters} onFilterChange={onFilterChange} />}
-            {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={() => setTab("pipeline")} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} tiers={tiers} />}
+            {tab === "detail" && liveDeal && <DealDetail deal={liveDeal} allDeals={deals} onBack={goBackFromDeal} onOpenDeal={goDeal} onUpdate={update} owners={owners} groups={groups} markets={markets} tiers={tiers} />}
           </>
         )}
       </div>
